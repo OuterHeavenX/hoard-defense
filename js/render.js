@@ -8,6 +8,7 @@
 'use strict';
 
 const VIEW_MARGIN = 90;
+const TOWER_SCALE = 0.75;           // rendered tower sprites, relative to native
 const ROW_HEIGHT = 20;              // depth-sort bucket granularity, world units
 const ROW_COUNT = Math.ceil(MAX_WORLD_H / ROW_HEIGHT) + 2;
 
@@ -430,24 +431,53 @@ Game.prototype.drawTurret = function (ctx, node) {
   if (node.lock) return this.drawLock(ctx, node);
   const py = node.y * TILT;
   const lit = node.level > 0;
-  const height = 30 + node.level * 3;
+  let height = 30 + node.level * 3;
 
-  // Pedestal
-  ctx.fillStyle = '#3f4650';
-  ctx.beginPath();
-  ctx.ellipse(node.x, py, node.radius, node.radius * TILT, 0, 0, TAU);
-  ctx.fill();
-  ctx.fillStyle = lit ? '#5a6472' : '#4a4a42';
-  ctx.fillRect(node.x - node.radius * 0.6, py - height, node.radius * 1.2, height);
-  ctx.beginPath();
-  ctx.ellipse(node.x, py - height, node.radius * 0.6, node.radius * 0.6 * TILT, 0, 0, TAU);
-  ctx.fill();
+  const sprite = Assets.tower(node.level);
+  const meta = Assets.towerMeta(node.level);
+  if (sprite && meta) {
+    // Rendered tower, with the image's ground origin on the node and the gun
+    // mounted on the walkway deck. Drawn at 75% of native scale: at full
+    // size a tier-5 tower overran the pad above it on the Dust Bowl's ring.
+    const k = TOWER_SCALE / Assets.manifest.ss;
+    const w = meta.w * k, h = meta.h * k;
+    const top = py - meta.anchorY * h;
+    // The render is cut out on transparency, so it lost its ground shadow;
+    // a soft ellipse trailing the sun anchors it to the floor.
+    const br = meta.baseR * Assets.manifest.unitPx * TOWER_SCALE;
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(node.x + br * 0.35, py + 2, br * 1.25, br * 0.55, 0, 0, TAU);
+    ctx.fill();
+    ctx.drawImage(sprite, node.x - w / 2, top, w, h);
+    height = (meta.anchorY - meta.deckY) * h;
+  } else {
+    // Procedural pedestal, kept as the fallback if the art did not load.
+    ctx.fillStyle = '#3f4650';
+    ctx.beginPath();
+    ctx.ellipse(node.x, py, node.radius, node.radius * TILT, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = lit ? '#5a6472' : '#4a4a42';
+    ctx.fillRect(node.x - node.radius * 0.6, py - height, node.radius * 1.2, height);
+    ctx.beginPath();
+    ctx.ellipse(node.x, py - height, node.radius * 0.6, node.radius * 0.6 * TILT, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = lit ? '#8fd8ff' : '#77715c';
+    ctx.beginPath();
+    ctx.ellipse(node.x, py - height - 6, node.radius * 0.5, node.radius * 0.5, 0, 0, TAU);
+    ctx.fill();
+  }
 
-  // Head
-  ctx.fillStyle = lit ? '#8fd8ff' : '#77715c';
-  ctx.beginPath();
-  ctx.ellipse(node.x, py - height - 6, node.radius * 0.5, node.radius * 0.5, 0, 0, TAU);
-  ctx.fill();
+  if (lit && sprite) {
+    ctx.fillStyle = '#2b3138';
+    ctx.beginPath();
+    ctx.ellipse(node.x, py - height - 4, 9, 9 * TILT, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = '#8fd8ff';
+    ctx.beginPath();
+    ctx.arc(node.x, py - height - 8, 4.5, 0, TAU);
+    ctx.fill();
+  }
 
   if (lit) {
     const st = node.stats;

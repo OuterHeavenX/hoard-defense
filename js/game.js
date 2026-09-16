@@ -27,7 +27,7 @@ class Game {
     this.audio = new Audio();
     this.shakeEnabled = true;
     this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
-    this.ground = makeGroundPattern(this.ctx, this.arena.ground);
+    this.ground = makeGroundPattern(this.ctx, this.arena.ground, this.arena.tile);
     this.screen = { w: 960, h: 600 };   // css pixels
     this.view = { w: 960, h: 600 };     // world units visible
     this.dpr = 1;
@@ -103,7 +103,7 @@ class Game {
     this.arena = arena;
     WORLD_W = arena.width;
     WORLD_H = arena.height;
-    this.ground = makeGroundPattern(this.ctx, arena.ground);
+    this.ground = makeGroundPattern(this.ctx, arena.ground, arena.tile);
     this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
     this.resize(this.screen.w, this.screen.h, this.dpr);
   }
@@ -1016,8 +1016,11 @@ function aimTowards(current, target, step) {
   return current + Math.sign(diff) * step;
 }
 
-/* Pre-rendered dirt tile so the ground costs one fill per frame. */
-function makeGroundPattern(ctx, palette) {
+/* Ground pattern: a Blender-rendered tile when the arena names one and it
+   loaded, else the procedural flecked dirt. One fill per frame either way. */
+function makeGroundPattern(ctx, palette, tileKey) {
+  const img = tileKey && Assets.ground[tileKey];
+  if (img) return ctx.createPattern(img, 'repeat');
   const pal = palette || { base: '#2b2f26', fleck: [[40, 70], [44, 74], [34, 56]] };
   const size = 128;
   const c = document.createElement('canvas');

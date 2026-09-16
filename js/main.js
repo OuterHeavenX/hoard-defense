@@ -20,6 +20,7 @@
     title: document.getElementById('panel-title'),
     howto: document.getElementById('panel-howto'),
     settings: document.getElementById('panel-settings'),
+    camp: document.getElementById('panel-camp'),
     stages: document.getElementById('panel-stages'),
     levelup: document.getElementById('panel-levelup'),
     paused: document.getElementById('panel-paused'),
@@ -30,9 +31,13 @@
 
   buildCharacterSprites();
   Progress.load();
+  Camp.load();
+  Records.load();
 
   const game = new Game(canvas, hud);
+  const music = new Music(game.audio);
   window.__game = game;   // handy for tinkering from the console
+  window.__music = music;
 
   function resize() {
     const dpr = Math.min(devicePixelRatio || 1, 2);
@@ -57,6 +62,8 @@
   const soundBtn = document.getElementById('opt-sound');
   const shakeBtn = document.getElementById('opt-shake');
   const volume = document.getElementById('opt-volume');
+  const musicBtn = document.getElementById('opt-music');
+  const musicVol = document.getElementById('opt-music-volume');
 
   function paintToggle(btn, on) {
     btn.setAttribute('aria-pressed', String(on));
@@ -65,6 +72,15 @@
   paintToggle(soundBtn, game.audio.enabled);
   paintToggle(shakeBtn, shakeEnabled);
   volume.value = String(Math.round(game.audio.volume * 100));
+  paintToggle(musicBtn, music.enabled);
+  musicVol.value = String(Math.round(music.volume * 100));
+
+  musicBtn.addEventListener('click', () => {
+    music.setEnabled(!music.enabled);
+    paintToggle(musicBtn, music.enabled);
+    game.audio.click();
+  });
+  musicVol.addEventListener('input', () => music.setVolume(Number(musicVol.value) / 100));
 
   soundBtn.addEventListener('click', () => {
     game.audio.setEnabled(!game.audio.enabled);
@@ -92,7 +108,7 @@
     overlay.classList.toggle('hidden', name === null);
     overlay.classList.toggle('title-mode', name === 'title');
     // HUD belongs to a run, not to the menus stacked on the title screen.
-    const inMenus = name === 'title' || name === 'howto' || name === 'settings' || name === 'stages';
+    const inMenus = name === 'title' || name === 'howto' || name === 'settings' || name === 'stages' || name === 'camp';
     hud.root.classList.toggle('hidden', inMenus);
     for (const key in panels) panels[key].classList.toggle('hidden', key !== name);
   }
@@ -101,6 +117,7 @@
   function gesture() {
     game.audio.unlock();
     game.audio.click();
+    music.start();
   }
 
   function toTitle() {
@@ -117,6 +134,46 @@
     showPanel(null);
   }
 
+  const campBank = document.getElementById('camp-bank');
+  const campList = document.getElementById('camp-list');
+
+  function buildCamp() {
+    campBank.textContent = Camp.bank;
+    campList.innerHTML = '';
+    for (const up of CAMP_UPGRADES) {
+      const rank = Camp.rank(up.id);
+      const cost = Camp.nextCost(up);
+      const row = document.createElement('div');
+      row.className = 'camp-row' + (rank >= up.max ? ' maxed' : '');
+      const pips = Array.from({ length: up.max }, (_, i) =>
+        '<i class="' + (i < rank ? 'on' : '') + '"></i>').join('');
+      row.innerHTML = '<div class="camp-info"><b>' + up.name + '</b><span>' + up.desc + '</span>' +
+        '<div class="pips">' + pips + '</div></div>';
+      const btn = document.createElement('button');
+      btn.className = 'camp-buy';
+      if (rank >= up.max) {
+        btn.textContent = 'MAXED';
+        btn.disabled = true;
+      } else {
+        btn.innerHTML = cost + ' <small>gold</small>';
+        btn.disabled = !Camp.canBuy(up);
+        btn.addEventListener('click', () => {
+          if (!Camp.buy(up)) return;
+          game.audio.upgrade();
+          buildCamp();
+        });
+      }
+      row.appendChild(btn);
+      campList.appendChild(row);
+    }
+  }
+
+  document.getElementById('btn-camp').addEventListener('click', () => {
+    gesture();
+    buildCamp();
+    showPanel('camp');
+  });
+
   /* Rebuilt each time it opens so clears unlock without a reload. */
   function buildStageList() {
     const list = document.getElementById('stage-list');
@@ -130,7 +187,12 @@
       const tag = cleared ? '<span class="tag cleared">CLEARED</span>'
         : unlocked ? '<span class="tag">AVAILABLE</span>'
         : '<span class="tag locked">CLEAR ' + ARENAS[i - 1].name + ' TO UNLOCK</span>';
-      btn.innerHTML = '<b>' + arena.name + '</b><i>' + arena.blurb + '</i>' + tag;
+      const best = Records.best[arena.id];
+      const bestLine = best && best.kills
+        ? '<em class="best">BEST &middot; ' + best.kills + ' kills &middot; lv ' + (best.level || 1) +
+          ' &middot; ' + formatTime(best.survived || 0) + ' survived</em>'
+        : '';
+      btn.innerHTML = '<b>' + arena.name + '</b><i>' + arena.blurb + '</i>' + bestLine + tag;
       btn.addEventListener('click', () => { gesture(); startGame(arena); });
       list.appendChild(btn);
     });
@@ -193,9 +255,14 @@
       .join(', ') || 'none';
     const tail = `<b>${Math.floor(game.goldBanked)}</b> gold &middot; <b>${built}</b> node levels &middot; level <b>${game.level}</b>` +
       `<br><span class="perk-summary">${perks}</span>`;
-    resultBody.innerHTML = won
+    const summary = game.runSummary || { kept: 0, improved: [] };
+    const bestNames = { kills: 'MOST KILLS', level: 'HIGHEST LEVEL', survived: 'LONGEST HELD', cleared: 'FIRST CLEAR' };
+    const bests = summary.improved.map((k) => bestNames[k]).filter(Boolean);
+    const bank = `<div class="banked">+<b>${summary.kept}</b> gold banked at camp &middot; <b>${Camp.bank}</b> total</div>` +
+      (bests.length ? `<div class="newbest">NEW BEST &middot; ${bests.join(' &middot; ')}</div>` : '');
+    resultBody.innerHTML = (won
       ? `${game.arena.name} cleared. <b>${game.kills}</b> kills, and the boss went down.<br>${tail}`
-      : `The hoard broke through at <b>${formatTime(STAGE_DURATION - game.timeLeft)}</b> after <b>${game.kills}</b> kills.<br>${tail}`;
+      : `The hoard broke through at <b>${formatTime(STAGE_DURATION - game.timeLeft)}</b> after <b>${game.kills}</b> kills.<br>${tail}`) + bank;
     if (won) game.audio.victory(); else game.audio.defeat();
     showPanel('result');
   }
@@ -269,6 +336,10 @@
 
     game.draw();
     updateHud();
+
+    music.intensity = game.intensity();
+    music.setMode(game.state === 'playing' || game.state === 'paused' || game.state === 'levelup' ? 'battle' : 'title');
+    music.setDucked(game.state === 'paused' || game.state === 'levelup');
 
     if (game.state !== previousState) {
       previousState = game.state;

@@ -73,6 +73,9 @@ class Game {
     this.scavenger = 0;
     this.novaLevel = 0;
     this.novaTimer = 0;
+    this.draftSize = 3;
+    this.revives = 0;
+    this.runSummary = null;   // filled once, when the run ends
     this.shake = 0;
     this.banner = null;
     this.camera = { x: this.player.x, y: this.player.y };
@@ -103,6 +106,7 @@ class Game {
   start(arena) {
     if (arena) this.setArena(arena);
     this.reset();
+    Camp.applyTo(this);
     this.audio.suspended = false;
     this.state = 'playing';
     this.announce('HOLD THE LINE', '#8fe8c0');
@@ -276,7 +280,12 @@ class Game {
     this.shake = Math.max(0, this.shake - dt * 22);
 
     if (this.player.hp <= 0) {
-      this.state = 'lost';
+      if (this.revives > 0) {
+        this.revive();
+      } else {
+        this.state = 'lost';
+        this.finishRun(false);
+      }
     } else if (this.timeLeft <= 0) {
       // The clock running out no longer ends the stage - the boss does.
       this.timeLeft = 0;
@@ -479,6 +488,40 @@ class Game {
     if (e.type === 'boss') this.spawnCoin(e.x, e.y, 60, 'health');
   }
 
+  revive() {
+    const p = this.player;
+    this.revives--;
+    p.hp = Math.ceil(p.maxHp * 0.4);
+    p.invuln = 1.6;
+    p.hurtFlash = 0;
+    this.hitStop = 0.2;
+    this.shake = 20;
+    this.burst(p.x, p.y, 40, '#7bf0a6', 300);
+    this.splash(p.x, p.y, 180, 40);     // clears the pocket that killed you
+    this.announce('SECOND CHANCE', '#7bf0a6');
+    this.audio.upgrade();
+  }
+
+  /* Banks the run's takings and records the result. Runs once per run;
+     both the win and the loss path route through here. */
+  finishRun(won) {
+    if (this.runSummary || this.attract) return;
+    // A clear held the whole stage by definition; the clock keeps running
+    // through the boss fight, so timeLeft alone would under-report it.
+    const survived = won ? STAGE_DURATION : Math.min(STAGE_DURATION, STAGE_DURATION - this.timeLeft);
+    const kept = Camp.deposit(this.goldBanked);
+    const improved = Records.submit(this.arena.id, {
+      kills: this.kills, level: this.level, survived, cleared: won
+    });
+    this.runSummary = { kept, improved, survived };
+  }
+
+  /* 0..1 - how loud the fight should sound. Feeds the music each frame. */
+  intensity() {
+    if (this.attract || this.state === 'menu') return 0;
+    return clamp(this.director.progress * 0.85 + (this.boss ? 0.3 : 0), 0, 1);
+  }
+
   addXp(amount) {
     if (this.attract) return;
     this.xp += amount;
@@ -494,7 +537,7 @@ class Game {
   takeLevelUp() {
     if (!this.pendingLevels || this.state !== 'playing') return null;
     this.pendingLevels--;
-    this.perkChoices = rollPerks(this, 3);
+    this.perkChoices = rollPerks(this, this.draftSize);
     if (!this.perkChoices.length) return null;   // everything maxed
     this.state = 'levelup';
     this.audio.upgrade();
@@ -560,6 +603,7 @@ class Game {
       this.boss = null;
       this.state = 'won';
       Progress.markCleared(this.arena.id);
+      this.finishRun(true);
       this.shake = 26;
       this.hitStop = 0.28;
       this.burst(b.x, b.y, 60, b.def.dark, 360);

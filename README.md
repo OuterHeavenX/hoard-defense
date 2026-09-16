@@ -76,9 +76,11 @@ js/arenas.js      stage definitions and unlock progress
 js/spatial.js     uniform grid for crowd queries
 js/input.js       keyboard + touch stick
 js/audio.js       synthesised sound effects (no audio files)
+js/music.js       reactive synthesised music loop
 js/sprites.js     procedural character sprite baking
 js/entities.js    player, enemies, bosses, bullets, coins, nodes
 js/perks.js       level-up perk draft
+js/camp.js        persistent bank, permanent upgrades, best-run records
 js/waves.js       the 5 minute wave director
 js/game.js        simulation
 js/render.js      2.5D renderer
@@ -109,6 +111,16 @@ brute or boss kill, bullets shove bodies backwards, damage numbers float off the
 targets only (doing it for every grunt would be noise and needless cost), muzzle flashes,
 and corpse decals that accumulate where the fighting actually is — a battlefield that
 visibly wears down sells the scale of the hoard better than anything else on screen.
+
+## Music
+
+Synthesised too, and it reacts. A lookahead scheduler walks a 16-step bar and lays
+notes onto the audio clock a fraction ahead of time, which is what keeps the beat steady
+when a heavy frame lands. The simulation feeds it an intensity each frame: tempo climbs
+from 112 to 158 bpm across the stage, hats come in once the crowd is real, the arpeggio
+once it's dense, and a second octave stacks on when the boss is out. The title screen
+gets a slow drone instead. Music ducks during pause and the perk draft, and has its own
+volume, separate from effects.
 
 ## Sound
 
@@ -148,6 +160,8 @@ Most of the feel lives in a few constants:
 - `js/arenas.js` — stage definitions; add an entry to add a stage
 - `js/perks.js` — the perk table and `xpForLevel()`
 - `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern
+- `js/camp.js` — `CAMP_UPGRADES` and `BANK_SHARE`, the cut of each run that comes home
+- `js/music.js` — `MUSIC_ROOTS` and `MUSIC_LADDER` for the progression and arpeggio
 
 The character art is deliberately placeholder. `bakeBiped()` is the only thing that
 draws a figure, so swapping in real sprite sheets means replacing that one function —

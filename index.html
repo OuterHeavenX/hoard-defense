@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="Hoard Defense - a 5 minute survival mockup stage. Mow down hordes, hoover up their gold, pour it into defense nodes.">
+<meta name="theme-color" content="#15170f">
+<title>Hoard Defense</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#9876;</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-left">
+    <div class="bar">
+      <div id="hp-fill"></div>
+      <span id="hp-text">110 / 110</span>
+    </div>
+    <div class="chips">
+      <span class="chip gold-chip">&#9679; <b id="gold">0</b> gold</span>
+      <span class="chip" id="dash">DASH</span>
+    </div>
+  </div>
+  <div class="hud-right">
+    <div id="timer">5:00</div>
+    <div class="chips">
+      <span class="chip">HORDE <b id="wave">0</b></span>
+      <span class="chip">KILLS <b id="kills">0</b></span>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div id="panel-menu" class="panel">
+    <h1>HOARD<span>DEFENSE</span></h1>
+    <p class="tagline">They come in their thousands. They die in their thousands. Survive 5:00.</p>
+    <ul class="rules">
+      <li><b>Move</b> WASD / arrows &middot; drag anywhere on touch</li>
+      <li><b>Dash</b> Space or Shift &middot; <b>Pause</b> P or Esc</li>
+      <li><b>Shooting is automatic</b> &mdash; it locks the nearest target</li>
+      <li>Kills drop <b class="g">gold</b>. Walk over it to hoover it up</li>
+      <li>Stand on a <b class="b">defense node</b> to pour your gold in &mdash; each tier makes it deadlier</li>
+    </ul>
+    <button id="btn-start" class="primary">DEPLOY</button>
+  </div>
+
+  <div id="panel-paused" class="panel hidden">
+    <h2>PAUSED</h2>
+    <button id="btn-resume" class="primary">RESUME</button>
+    <button id="btn-restart">RESTART STAGE</button>
+  </div>
+
+  <div id="panel-result" class="panel hidden">
+    <h2 id="result-title">STAGE CLEARED</h2>
+    <p id="result-body"></p>
+    <button id="btn-retry" class="primary">RUN IT AGAIN</button>
+  </div>
+</div>
+
+<script src="js/utils.js"></script>
+<script src="js/spatial.js"></script>
+<script src="js/input.js"></script>
+<script src="js/entities.js"></script>
+<script src="js/waves.js"></script>
+<script src="js/game.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

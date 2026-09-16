@@ -27,6 +27,7 @@ class Game {
     this.audio = new Audio();
     this.shakeEnabled = true;
     this.lightingEnabled = true;
+    this.zoom = 0.8;            // camera distance multiplier, player-adjustable
     this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
     this.ground = makeGroundPattern(this.ctx, this.arena.ground, this.arena.tile);
     this.screen = { w: 960, h: 600 };   // css pixels
@@ -50,6 +51,7 @@ class Game {
     this.particles = [];
     this.particlePool = [];
     this.nodes = this.buildNodes();
+    this.torches = this.buildTorches();
     this.kills = 0;
     this.goldBanked = 0;
     this.decals = [];
@@ -97,6 +99,26 @@ class Game {
     this.attract = false;
   }
 
+  /* Flame poles: around the arena's edge and one beside every node, or
+     along the corridor walls between the stairs on the gauntlet. They are
+     the arena's light - the fight happens in torchlight, not in the dark. */
+  buildTorches() {
+    const out = [];
+    const put = (x, y) => out.push({ kind: 'torch', x, y, phase: rand(0, TAU), flicker: 1 });
+    if (this.arena.mode === 'gauntlet') {
+      for (let y = 180; y < WORLD_H - 120; y += 300) {
+        put(52, y);
+        put(WORLD_W - 52, Math.min(WORLD_H - 120, y + 150));
+      }
+    } else {
+      const inset = 64, step = 340;
+      for (let x = inset + 120; x < WORLD_W - inset - 60; x += step) { put(x, inset); put(x, WORLD_H - inset); }
+      for (let y = inset + 120; y < WORLD_H - inset - 60; y += step) { put(inset, y); put(WORLD_W - inset, y); }
+    }
+    for (const n of this.nodes) if (!n.lock) put(n.x + 74, n.y - 58);
+    return out;
+  }
+
   buildNodes() {
     const cx = WORLD_W / 2, cy = WORLD_H / 2;
     return this.arena.nodes.map(([dx, dy]) => new DefenseNode(cx + dx, cy + dy));
@@ -104,6 +126,12 @@ class Game {
 
   /* Swap the active stage. Must happen before reset() so the node layout,
      ground palette and camera limits all come from the right arena. */
+  setZoom(z) {
+    this.zoom = clamp(z, 0.45, 1.3);
+    this.resize(this.screen.w, this.screen.h, this.dpr);
+    return this.zoom;
+  }
+
   setArena(arena) {
     this.arena = arena;
     WORLD_W = arena.width;
@@ -193,11 +221,12 @@ class Game {
     this.dpr = dpr;
     this.screen.w = cssW;
     this.screen.h = cssH;
-    // One camera distance for every stage. Nothing is fitted to the arena:
-    // a small or narrow stage shows its edges and the void beyond them (a
-    // chasm under The Bridge, rock around The Pit) rather than zooming in.
-    // Fitting made The Bridge 1.8x closer than the Dust Bowl.
-    this.scale = clamp(Math.min(cssW / 1100, cssH / 760), 0.5, 1.15);
+    // One camera distance for every stage, scaled by the player's zoom.
+    // Nothing is fitted to the arena. The floor is low enough that a phone
+    // can pull back to see a 1000-wide corridor or nodes 620 out: at the old
+    // 0.5 floor a phone saw ~780 world px, which fit stages 1-2 exactly and
+    // cut the wider layouts off - what read as 'zoomed in' on stages 3+.
+    this.scale = clamp(this.zoom * Math.min(cssW / 1100, cssH / 760), 0.24, 1.15);
     this.view.w = cssW / this.scale;
     this.view.h = cssH / this.scale;
   }
@@ -1009,6 +1038,18 @@ class Game {
     }
     this.flashScreen = Math.max(0, (this.flashScreen || 0) - dt * 2.2);
 
+    // Torches breathe, and shed the odd ember.
+    const now = performance.now() / 1000;
+    for (const t of this.torches) {
+      t.flicker = 0.86 + Math.sin(now * 9 + t.phase) * 0.07 + Math.sin(now * 23 + t.phase * 1.7) * 0.05;
+      if (this.ambient.length < 90 && Math.random() < dt * 1.6 &&
+          Math.abs(t.x - this.camera.x) < this.view.w && Math.abs(t.y - this.camera.y) < this.view.h / TILT) {
+        this.ambient.push({ x: t.x + rand(-3, 3), y: t.y, z: 56 + rand(0, 6), vx: rand(-6, 6), vy: rand(-3, 3),
+                            vz: rand(22, 40), life: rand(0.6, 1.3), maxLife: 1, kind: 'embers', size: rand(1.2, 2) });
+        this.ambient[this.ambient.length - 1].maxLife = this.ambient[this.ambient.length - 1].life;
+      }
+    }
+
     const kind = this.arena.ambient;
     if (kind) {
       this.ambientTimer -= dt;
@@ -1031,8 +1072,13 @@ class Game {
         if (m.kind === 'embers') m.vx += Math.sin(m.life * 5) * 18 * dt;
         if (m.life <= 0) this.ambient.splice(i, 1);
       }
-    } else if (this.ambient.length) {
-      this.ambient.length = 0;
+    } else {
+      for (let i = this.ambient.length - 1; i >= 0; i--) {
+        const m = this.ambient[i];
+        m.life -= dt;
+        m.x += m.vx * dt; m.y += m.vy * dt; m.z += m.vz * dt;
+        if (m.life <= 0) this.ambient.splice(i, 1);
+      }
     }
   }
 

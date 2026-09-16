@@ -25,7 +25,11 @@
     </div>
   </div>
   <div class="hud-right">
-    <button id="btn-pause" class="hud-btn" aria-label="Pause">II</button>
+    <div class="hud-row">
+      <button id="btn-zoom-out" class="hud-btn" aria-label="Zoom out">&minus;</button>
+      <button id="btn-zoom-in" class="hud-btn" aria-label="Zoom in">+</button>
+      <button id="btn-pause" class="hud-btn" aria-label="Pause">II</button>
+    </div>
     <div id="timer">5:00</div>
     <div class="chips">
       <span class="chip">HORDE <b id="wave">0</b></span>
@@ -85,6 +89,10 @@
     <div class="setting">
       <label for="opt-music-volume">Music volume</label>
       <input id="opt-music-volume" type="range" min="0" max="100" value="50">
+    </div>
+    <div class="setting">
+      <label for="opt-zoom">Camera distance</label>
+      <input id="opt-zoom" type="range" min="45" max="130" value="80">
     </div>
     <div class="setting">
       <label for="opt-lighting">Lighting &amp; glow</label>

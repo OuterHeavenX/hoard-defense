@@ -3,7 +3,7 @@
 
 let WORLD_W = 1900;          // set from the active arena
 let WORLD_H = 1350;
-const MAX_WORLD_H = 2000;    // ceiling used to size fixed-length buffers
+const MAX_WORLD_H = 3600;    // ceiling used to size fixed-length buffers
 const MAX_ENEMIES = 1400;
 const MAX_BRUTES = 9;          // brutes are set-pieces, not a crowd
 const MAX_COINS = 420;
@@ -12,6 +12,7 @@ const MAX_DECALS = 260;        // fading remains left on the battlefield
 const MAX_NUMBERS = 40;        // floating damage numbers, big hits only
 const NEIGHBOUR_VISITS = 20;   // bodies examined per enemy per frame (hard cap)
 const BOSS_AT = 42;            // seconds left when the boss walks in
+const LOCK_COST = 1200;        // gold to break the Juggernaut's cage
 const DEPOSIT_RATE = 420;      // gold/second - fast enough that a run-through pays
 
 class Game {
@@ -36,7 +37,8 @@ class Game {
   }
 
   reset() {
-    this.player = new Player(WORLD_W / 2, WORLD_H / 2);
+    const startAt = this.arena.playerStart || { x: WORLD_W / 2, y: WORLD_H / 2 };
+    this.player = new Player(startAt.x, startAt.y);
     this.director = new WaveDirector(this.arena);
     this.enemies = [];
     this.enemyPool = [];
@@ -75,6 +77,9 @@ class Game {
     this.novaTimer = 0;
     this.draftSize = 3;
     this.revives = 0;
+    this.ally = null;
+    this.allyReached = false;
+    this.lockNode = null;
     this.runSummary = null;   // filled once, when the run ends
     this.shake = 0;
     this.banner = null;
@@ -106,6 +111,16 @@ class Game {
   start(arena) {
     if (arena) this.setArena(arena);
     this.reset();
+    if (this.arena.ally) {
+      this.ally = new Ally(this.arena.ally.x, this.arena.ally.y);
+      this.ally.caged = true;
+      // Rushing the cage must cost something, or the climb is a 15s sprint
+      // past everything. Gold only comes from kills, so the lock makes the
+      // gauntlet the price of the rescue.
+      this.lockNode = new DefenseNode(this.arena.ally.x, this.arena.ally.y + 70,
+        { costs: [LOCK_COST], maxLevel: 1, lock: true });
+      this.nodes.push(this.lockNode);
+    }
     Camp.applyTo(this);
     this.audio.suspended = false;
     this.state = 'playing';
@@ -209,6 +224,23 @@ class Game {
     this.spawnEnemy(type, p.x, p.y);
   }
 
+  /* World position of a staircase doorway, just inside the wall. */
+  stairPoint(stair) {
+    return { x: stair.side === 'left' ? 14 : WORLD_W - 14, y: stair.y };
+  }
+
+  /* Spawn in the doorway; height is anchored to wall distance from then on. */
+  spawnAtStair(type, stair) {
+    const p = this.stairPoint(stair);
+    const e = this.spawnEnemy(type, p.x + rand(-6, 6), p.y + rand(-34, 34));
+    if (e) e.z = STAIR_RISE * STAIR_STEPS;
+    return e;
+  }
+
+  spawnClusterAtStair(type, count, stair) {
+    for (let i = 0; i < count; i++) this.spawnAtStair(type, stair);
+  }
+
   /* A packed blob of enemies pouring in from one side. */
   spawnCluster(type, count, side) {
     const anchor = this.edgePoint(side);
@@ -263,6 +295,7 @@ class Game {
 
     this.updateBoss(dt);
     this.updatePlayer(dt);
+    this.updateAlly(dt);
     this.rebuildGrid();
     this.updateEnemies(dt);
     this.updateNodes(dt);
@@ -430,8 +463,21 @@ class Game {
       // Stride speed follows actual movement so the crowd never moonwalks.
       e.anim += Math.hypot(e.vx, e.vy) * dt * 0.09;
       if (Math.abs(e.vx) > 6) e.flip = e.vx < 0;
+      if (e.z > 0) {
+        const fromWall = Math.min(e.x, WORLD_W - e.x);
+        e.z = Math.max(0, Math.min(e.z, STAIR_RISE * STAIR_STEPS * (1 - fromWall / STAIR_LENGTH)));
+      }
 
       if (this.attract) continue;
+
+      const ally = this.ally;
+      if (ally && ally.active && e.touchTimer <= 0) {
+        const reach = e.radius + ally.radius;
+        if (dist2(e.x, e.y, ally.x, ally.y) < reach * reach) {
+          e.touchTimer = 0.6;
+          this.damageAlly(e.damage * 0.6);
+        }
+      }
 
       // Contact damage, rate limited per enemy.
       const touch = e.radius + p.radius;
@@ -516,6 +562,107 @@ class Game {
     this.runSummary = { kept, improved, survived };
   }
 
+  /* Camp deployment: beside the player at the start of any stage. On The
+     Ascent the caged one at the top is the story; the owned one still walks
+     in with you. */
+  deployAlly() {
+    if (this.ally && !this.ally.caged) return;
+    if (this.ally && this.ally.caged) {
+      // Owned and on The Ascent: he is with you from the start; the cage
+      // at the top is empty and reaching it still triggers the finale.
+      this.ally.caged = false;
+      this.ally.x = this.player.x + 40;
+      this.ally.y = this.player.y + 30;
+      return;
+    }
+    this.ally = new Ally(this.player.x + 40, this.player.y + 30);
+  }
+
+  /* The player reaches the cage. */
+  freeAlly() {
+    if (this.allyReached) return;
+    this.allyReached = true;
+    if (this.ally && this.ally.caged) {
+      this.ally.caged = false;
+      this.burst(this.ally.x, this.ally.y, 40, '#ffd34d', 300);
+    }
+    this.announce('THE JUGGERNAUT IS FREE', '#ffd34d');
+    this.audio.upgrade();
+    this.shake = 14;
+    // His jailer comes down the top stairs.
+    if (!this.boss) this.spawnBoss(this.arena.ally.x, this.arena.ally.y - 60);
+  }
+
+  updateAlly(dt) {
+    const a = this.ally;
+    if (!a) return;
+    const p = this.player;
+    a.hurtTimer = Math.max(0, a.hurtTimer - dt);
+
+    if (a.caged) return;      // freed by paying the lock node, see updateNodes
+
+    if (a.down) {
+      a.downTimer -= dt;
+      a.firing = false;
+      a.spin = 0;
+      if (a.downTimer <= 0) {
+        a.hp = Math.ceil(a.maxHp * 0.5);
+        this.burst(a.x, a.y, 20, '#7bf0a6', 200);
+        this.announce('JUGGERNAUT UP', '#7bf0a6');
+      }
+      return;
+    }
+
+    // Follow: close to a trailing point, but never crowd the player.
+    const dx = p.x - a.x, dy = p.y - a.y;
+    const d = Math.hypot(dx, dy) || 1;
+    const want = d > 90 ? a.speed : d > 60 ? a.speed * 0.5 : 0;
+    a.vx = damp(a.vx, (dx / d) * want, 10, dt);
+    a.vy = damp(a.vy, (dy / d) * want, 10, dt);
+    a.x = clamp(a.x + a.vx * dt, a.radius, WORLD_W - a.radius);
+    a.y = clamp(a.y + a.vy * dt, a.radius, WORLD_H - a.radius);
+    a.anim += Math.hypot(a.vx, a.vy) * dt * 0.06;
+
+    // Gatling: spin up on a target, spin down without one.
+    const target = this.acquire(a, a.x, a.y, a.range);
+    a.fireTimer -= dt;
+    if (target) {
+      a.facing = Math.atan2(target.y - a.y, target.x - a.x);
+      a.flip = Math.cos(a.facing) < 0;
+      a.spin = Math.min(a.spinUp, a.spin + dt);
+      a.firing = a.spin >= a.spinUp;
+      if (a.firing && a.fireTimer <= 0) {
+        a.fireTimer = a.fireInterval;
+        const spread = rand(-0.09, 0.09);
+        this.spawnBullet(
+          a.x + Math.cos(a.facing) * 30, a.y + Math.sin(a.facing) * 30,
+          Math.cos(a.facing + spread), Math.sin(a.facing + spread),
+          760, a.damage, { pierce: 1, life: a.range / 760 + 0.05, color: '#ffc16b', z: 26, radius: 3 }
+        );
+        this.audio.gatling();
+      }
+    } else {
+      a.spin = Math.max(0, a.spin - dt * 1.6);
+      a.firing = false;
+      if (Math.hypot(a.vx, a.vy) > 12) { a.facing = Math.atan2(a.vy, a.vx); a.flip = a.vx < 0; }
+    }
+  }
+
+  damageAlly(amount) {
+    const a = this.ally;
+    if (!a || !a.active || a.hurtTimer > 0) return;
+    a.hp -= amount;
+    a.hurtTimer = 0.3;
+    if (a.hp <= 0) {
+      a.hp = 0;
+      a.downTimer = a.downFor;
+      this.burst(a.x, a.y, 30, '#2f3a2a', 260);
+      this.announce('JUGGERNAUT DOWN', '#ff7a6b');
+      this.audio.hurt();
+      this.shake = 12;
+    }
+  }
+
   /* 0..1 - how loud the fight should sound. Feeds the music each frame. */
   intensity() {
     if (this.attract || this.state === 'menu') return 0;
@@ -580,12 +727,12 @@ class Game {
     this.burst(x, y, 8, '#ffb36b', 200);
   }
 
-  spawnBoss() {
+  spawnBoss(atX, atY) {
     if (this.boss) return;
     const p = this.player;
     const a = rand(0, TAU);
-    const x = clamp(p.x + Math.cos(a) * 520, 60, WORLD_W - 60);
-    const y = clamp(p.y + Math.sin(a) * 420, 60, WORLD_H - 60);
+    const x = atX !== undefined ? clamp(atX, 60, WORLD_W - 60) : clamp(p.x + Math.cos(a) * 520, 60, WORLD_W - 60);
+    const y = atY !== undefined ? clamp(atY, 60, WORLD_H - 60) : clamp(p.y + Math.sin(a) * 420, 60, WORLD_H - 60);
     this.boss = new Boss(this.arena.boss, x, y, 1 + this.director.progress * 0.5);
     this.enemies.push(this.boss);
     this.announce(this.boss.name, '#ff7a6b');
@@ -662,14 +809,18 @@ class Game {
           p.gold -= spent;
           if (spent > 0) this.audio.deposit();
           if (node.pulse === 1) {
-            this.announce('NODE LV' + node.level, '#8fd8ff');
-            this.burst(node.x, node.y, 18, '#8fd8ff', 220);
-            this.audio.upgrade();
+            if (node.lock) {
+              this.freeAlly();
+            } else {
+              this.announce('NODE LV' + node.level, '#8fd8ff');
+              this.burst(node.x, node.y, 18, '#8fd8ff', 220);
+              this.audio.upgrade();
+            }
           }
         }
       }
 
-      if (node.level === 0) continue;
+      if (node.level === 0 || node.lock) continue;
       const st = node.stats;
       node.fireTimer -= dt;
       const target = this.acquire(node, node.x, node.y, st.range);

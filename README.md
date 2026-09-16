@@ -159,7 +159,8 @@ Most of the feel lives in a few constants:
 - `js/sprites.js` — the `looks` table: size, colour and pose per character
 - `js/arenas.js` — stage definitions; add an entry to add a stage
 - `js/perks.js` — the perk table and `xpForLevel()`
-- `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern
+- `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern; the `Ally` class
+- `js/game.js` — `LOCK_COST`, what the Juggernaut's cage takes to open
 - `js/camp.js` — `CAMP_UPGRADES` and `BANK_SHARE`, the cut of each run that comes home
 - `js/music.js` — `MUSIC_ROOTS` and `MUSIC_LADDER` for the progression and arpeggio
 

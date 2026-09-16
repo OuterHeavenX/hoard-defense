@@ -55,6 +55,12 @@ const CAMP_UPGRADES = [
     apply: (g) => { g.draftSize = 4; }
   },
   {
+    id: 'juggernaut', name: 'THE JUGGERNAUT', max: 1, requires: 'ascent',
+    desc: 'A walking gun emplacement with a gatling cannon. Follows you into every stage. Can be knocked down, never lost.',
+    cost: () => 12000,
+    apply: (g) => { g.deployAlly(); }
+  },
+  {
     id: 'revive', name: 'SECOND CHANCE', max: 1,
     desc: 'Once per run, death instead restores you to 40% health.',
     cost: () => 3200,
@@ -90,9 +96,14 @@ const Camp = {
     return n >= up.max ? 0 : up.cost(n);
   },
 
+  /* Some upgrades are gated on a stage clear, not just on gold. */
+  isLocked(up) {
+    return !!up.requires && !Progress.cleared[up.requires];
+  },
+
   canBuy(up) {
     const cost = this.nextCost(up);
-    return cost > 0 && this.bank >= cost;
+    return cost > 0 && this.bank >= cost && !this.isLocked(up);
   },
 
   buy(up) {

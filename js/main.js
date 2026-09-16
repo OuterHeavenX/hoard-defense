@@ -151,7 +151,13 @@
         '<div class="pips">' + pips + '</div></div>';
       const btn = document.createElement('button');
       btn.className = 'camp-buy';
-      if (rank >= up.max) {
+      if (Camp.isLocked(up)) {
+        const need = arenaById(up.requires).name;
+        row.classList.add('locked');
+        row.querySelector('span').textContent += ' Clear ' + need + ' to unlock.';
+        btn.textContent = 'LOCKED';
+        btn.disabled = true;
+      } else if (rank >= up.max) {
         btn.textContent = 'MAXED';
         btn.disabled = true;
       } else {
@@ -261,7 +267,7 @@
     const bank = `<div class="banked">+<b>${summary.kept}</b> gold banked at camp &middot; <b>${Camp.bank}</b> total</div>` +
       (bests.length ? `<div class="newbest">NEW BEST &middot; ${bests.join(' &middot; ')}</div>` : '');
     resultBody.innerHTML = (won
-      ? `${game.arena.name} cleared. <b>${game.kills}</b> kills, and the boss went down.<br>${tail}`
+      ? `${game.arena.name} cleared. <b>${game.kills}</b> kills, and ${game.arena.ally ? 'the Warden fell at the top of the stairs' : 'the boss went down'}.<br>${tail}`
       : `The hoard broke through at <b>${formatTime(STAGE_DURATION - game.timeLeft)}</b> after <b>${game.kills}</b> kills.<br>${tail}`) + bank;
     if (won) game.audio.victory(); else game.audio.defeat();
     showPanel('result');

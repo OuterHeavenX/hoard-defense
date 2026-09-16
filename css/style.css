@@ -452,3 +452,108 @@ input[type="range"] {
   letter-spacing: 0.12em;
   color: #8b9678;
 }
+
+/* ------------------------------------------------------------------ Camp */
+
+.camp-panel { width: min(600px, 100%); }
+
+.bank {
+  display: inline-block;
+  margin: 0 0 16px;
+  padding: 7px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  background: rgba(255, 211, 77, 0.12);
+  border: 1px solid rgba(255, 211, 77, 0.4);
+}
+
+.camp-list { display: grid; gap: 9px; margin-bottom: 6px; }
+
+.camp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid rgba(238, 243, 226, 0.16);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+}
+
+.camp-row.maxed { border-color: rgba(255, 211, 77, 0.35); }
+
+.camp-info b {
+  display: block;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  margin-bottom: 4px;
+}
+
+.camp-info span {
+  display: block;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #b9c3a8;
+}
+
+.pips { display: flex; gap: 5px; margin-top: 7px; }
+
+.pips i {
+  width: 14px;
+  height: 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.pips i.on { background: var(--gold); }
+
+.camp-buy {
+  flex: none;
+  margin: 0;
+  min-width: 108px;
+  padding: 10px 14px;
+  font-size: 13px;
+}
+
+.camp-buy small { font-size: 10px; letter-spacing: 0.1em; color: #b9c3a8; }
+
+.camp-buy:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.camp-buy:not(:disabled) {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(255, 211, 77, 0.1);
+}
+
+.camp-buy:not(:disabled):hover { background: rgba(255, 211, 77, 0.22); }
+
+/* Best-run line on the stage cards, and the callouts on the result screen. */
+
+.stage .best {
+  display: block;
+  margin-top: 8px;
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--blue);
+}
+
+.banked {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(238, 243, 226, 0.14);
+  color: var(--gold);
+  font-size: 13px;
+}
+
+.newbest {
+  margin-top: 8px;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  color: #7bf0a6;
+}
+
+.perk-summary { font-size: 11.5px; color: #b9c3a8; }

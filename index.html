@@ -41,6 +41,7 @@
     <p class="tagline">They come in their thousands. Hold the line for 5:00.</p>
     <div class="menu">
       <button id="btn-play" class="primary">PLAY</button>
+      <button id="btn-camp">CAMP</button>
       <button id="btn-howto">HOW TO PLAY</button>
       <button id="btn-settings">SETTINGS</button>
     </div>
@@ -77,9 +78,25 @@
       <input id="opt-volume" type="range" min="0" max="100" value="60">
     </div>
     <div class="setting">
+      <label for="opt-music">Music</label>
+      <button id="opt-music" class="toggle" aria-pressed="true">ON</button>
+    </div>
+    <div class="setting">
+      <label for="opt-music-volume">Music volume</label>
+      <input id="opt-music-volume" type="range" min="0" max="100" value="50">
+    </div>
+    <div class="setting">
       <label for="opt-shake">Screen shake</label>
       <button id="opt-shake" class="toggle" aria-pressed="true">ON</button>
     </div>
+    <button class="back primary">BACK</button>
+  </div>
+
+  <div id="panel-camp" class="panel hidden camp-panel">
+    <h2>CAMP</h2>
+    <p class="tagline">A third of every run's gold comes home. Spend it on what lasts.</p>
+    <div class="bank">&#9679; <b id="camp-bank">0</b> gold banked</div>
+    <div id="camp-list" class="camp-list"></div>
     <button class="back primary">BACK</button>
   </div>
 
@@ -115,9 +132,11 @@
 <script src="js/spatial.js"></script>
 <script src="js/input.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/music.js"></script>
 <script src="js/sprites.js"></script>
 <script src="js/entities.js"></script>
 <script src="js/perks.js"></script>
+<script src="js/camp.js"></script>
 <script src="js/waves.js"></script>
 <script src="js/game.js"></script>
 <script src="js/render.js"></script>

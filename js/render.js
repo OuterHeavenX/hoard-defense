@@ -67,16 +67,36 @@ Game.prototype.draw = function () {
 /* The floor is the one thing drawn in squashed space, so its texture
    foreshortens with the plane instead of sliding across it. */
 Game.prototype.drawGround = function (ctx) {
+  // An arena that names a void means to show it: the Bridge's chasm, the
+  // Pit's rock walls, the dark either side of the Ascent. Everywhere else the
+  // ground runs to the edge of the screen instead, because a window wider
+  // than the arena was framing the whole stage in black.
+  const open = !this.arena.void;
+  const vx0 = this._camX, vx1 = this._camX + this.view.w;
+  const vy0 = this._camPY / TILT, vy1 = (this._camPY + this.view.h) / TILT;
   // Only the visible slice of the floor: a pattern fill over the whole
   // world rect is clipped, but the pattern still gets sampled for it.
-  const x0 = Math.max(0, this._camX), x1 = Math.min(WORLD_W, this._camX + this.view.w);
-  const y0 = Math.max(0, this._camPY / TILT), y1 = Math.min(WORLD_H, (this._camPY + this.view.h) / TILT);
+  const x0 = open ? vx0 : Math.max(0, vx0), x1 = open ? vx1 : Math.min(WORLD_W, vx1);
+  const y0 = open ? vy0 : Math.max(0, vy0), y1 = open ? vy1 : Math.min(WORLD_H, vy1);
   ctx.save();
   ctx.scale(1, TILT);
   ctx.fillStyle = this.ground;
   ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   ctx.fillStyle = 'rgba(120,130,96,0.06)';
   ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+  // Ground outside the line is still out of bounds, so it is dropped back a
+  // stop. The arena stays the bright part of the picture without a hard edge
+  // into nothing.
+  if (open) {
+    ctx.fillStyle = 'rgba(0,0,0,0.34)';
+    if (vy0 < 0) ctx.fillRect(vx0, vy0, vx1 - vx0, Math.min(0, vy1) - vy0);
+    if (vy1 > WORLD_H) ctx.fillRect(vx0, Math.max(WORLD_H, vy0), vx1 - vx0, vy1 - Math.max(WORLD_H, vy0));
+    const iy0 = Math.max(0, vy0), iy1 = Math.min(WORLD_H, vy1);
+    if (iy1 > iy0) {
+      if (vx0 < 0) ctx.fillRect(vx0, iy0, Math.min(0, vx1) - vx0, iy1 - iy0);
+      if (vx1 > WORLD_W) ctx.fillRect(Math.max(WORLD_W, vx0), iy0, vx1 - Math.max(WORLD_W, vx0), iy1 - iy0);
+    }
+  }
   ctx.restore();
 
   // Border drawn unsquashed so the line keeps an even weight all the way

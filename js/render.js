@@ -46,6 +46,7 @@ Game.prototype.draw = function () {
   this.drawParticles(ctx);
   this.drawNova(ctx);
   this.drawMuzzle(ctx);
+  this.drawBarricadeLabel(ctx);
   this.drawNumbers(ctx);
   this.drawAmbient(ctx);
 
@@ -110,7 +111,102 @@ Game.prototype.drawGround = function (ctx) {
   ctx.strokeRect(0, 0, WORLD_W, WORLD_H * TILT);
 };
 
+/* The fortress family whose walls and dressing this arena is built from. */
+Game.prototype.propSet = function () {
+  return Assets.propSets[this.arena.walls] || null;
+};
+
+Game.prototype.drawWallSeg = function (ctx, item) {
+  const set = this.propSet();
+  const bar = item.bar;
+  const tier = bar.level - 1;
+  if (!set || tier < 0) return;
+  const dir = bar.vertical ? 1 : 0;
+  const img = set.walls[tier][dir];
+  const meta = set.meta.walls[tier][dir];
+  if (!img) return;
+
+  const k = TOWER_SCALE / Assets.propMeta.ss;
+  const w = meta.w * k, h = meta.h * k;
+  // A battered segment settles into its own footings rather than fading out,
+  // so a wall about to give reads at a glance without a bar over every piece.
+  const worn = 1 - clamp(bar.hp[item.i] / bar.segHp, 0, 1);
+  const py = item.y * TILT + worn * 5;
+
+  // The footprint shadow follows the run, so a wall going away from the
+  // camera gets a narrow shadow up the screen rather than a stack of wide
+  // ellipses beside it.
+  const rx = bar.vertical ? meta.thick * 0.6 + 3 : meta.run * 0.58;
+  const ry = bar.vertical ? meta.run * TILT * 0.58 : meta.thick * 0.5 * TILT + 3;
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(item.x + 4, item.y * TILT + 2, rx, ry, 0, 0, TAU);
+  ctx.fill();
+
+  const x = item.x - meta.anchorX * w, y = py - meta.anchorY * h;
+  ctx.drawImage(img, x, y, w, h);
+  if (bar.hit[item.i] > 0) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = bar.hit[item.i] * 0.5;
+    ctx.drawImage(img, x, y, w, h);
+    ctx.restore();
+  }
+};
+
+Game.prototype.drawProp = function (ctx, item) {
+  const set = this.propSet();
+  if (!set) return;
+  const img = set.props[item.name];
+  const meta = set.meta.props[item.name];
+  if (!img) return;
+  const k = TOWER_SCALE / Assets.propMeta.ss;
+  const w = meta.w * k, h = meta.h * k;
+  const py = item.y * TILT;
+  ctx.fillStyle = 'rgba(0,0,0,0.34)';
+  ctx.beginPath();
+  ctx.ellipse(item.x + 6, py + 2, meta.baseR * Assets.propMeta.unitPx * TOWER_SCALE * 1.2,
+              meta.baseR * Assets.propMeta.unitPx * TOWER_SCALE * 0.5 + 3, 0, 0, TAU);
+  ctx.fill();
+  ctx.drawImage(img, item.x - meta.anchorX * w, py - meta.anchorY * h, w, h);
+};
+
+/* What the wall the player is standing at will cost, over the middle of the
+   run so it does not collide with a turret's own prompt. */
+Game.prototype.drawBarricadeLabel = function (ctx) {
+  const bar = this.activeBarricade;
+  if (!bar || this.activeNode) return;
+  const c = bar.segCentre((bar.count / 2) | 0);
+  const names = ['PALISADE', 'STONE WALL', 'RAMPART'];
+  const holes = bar.count - bar.standing;
+  let label;
+  if (bar.level === 0) label = 'BUILD ' + names[0] + '  ' + Math.ceil(bar.nextCost - bar.invested) + 'g';
+  else if (holes > 0) label = 'REPAIR  ' + holes + (holes === 1 ? ' GAP' : ' GAPS');
+  else if (bar.maxed) label = 'RAMPART  MAX';
+  else label = 'RAISE ' + names[bar.level] + '  ' + Math.ceil(bar.nextCost - bar.invested) + 'g';
+
+  ctx.fillStyle = this.player.gold >= 1 || bar.level === 0 ? '#ffd9a0' : '#c9b48c';
+  ctx.font = 'bold 15px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText(label, c.x, c.y * TILT - 68);
+};
+
 Game.prototype.drawNodePads = function (ctx) {
+  // The build spot for each wall, so a run reads as something you can raise
+  // rather than scenery you happen to be standing near.
+  for (const bar of this.barricades) {
+    const py = bar.padY * TILT;
+    const active = this.activeBarricade === bar;
+    ctx.fillStyle = bar.level > 0 ? 'rgba(210,170,110,0.12)' : 'rgba(255,214,122,0.10)';
+    ctx.beginPath();
+    ctx.ellipse(bar.padX, py, bar.padRadius, bar.padRadius * TILT, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = active ? 'rgba(255,225,170,0.85)' : 'rgba(220,190,140,0.35)';
+    ctx.lineWidth = active ? 3 : 2;
+    ctx.setLineDash([9, 7]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
   for (const node of this.nodes) {
     const active = this.activeNode === node;
     const py = node.y * TILT;
@@ -200,6 +296,13 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
   const enemies = this.enemies;
   for (let i = 0; i < enemies.length; i++) put(enemies[i]);
   for (const node of this.nodes) put(node);
+  for (let i = 0; i < this.props.length; i++) put(this.props[i]);
+  // A wall segment sorts on its own centre, so a run going away from the
+  // camera interleaves with the crowd instead of covering all of it.
+  for (let i = 0; i < this.wallSegs.length; i++) {
+    const seg = this.wallSegs[i];
+    if (seg.bar.hp[seg.i] > 0) put(seg);
+  }
   for (let i = 0; i < this.torches.length; i++) put(this.torches[i]);
   for (let i = 0; i < this.coins.length; i++) put(this.coins[i]);
   if (!this.attract) put(this.player);
@@ -216,6 +319,8 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
         case 'player': this.drawPlayer(ctx, item); break;
         case 'ally': this.drawAlly(ctx, item); break;
         case 'torch': this.drawTorch(ctx, item); break;
+        case 'wall':  this.drawWallSeg(ctx, item); break;
+        case 'prop':  this.drawProp(ctx, item); break;
       }
     }
   }
@@ -962,6 +1067,9 @@ Game.prototype.collectLights = function (out) {
   }
   if (this.muzzle) out.push({ x: this.muzzle.x, y: this.muzzle.y * TILT - 20, r: 140, a: 1.0, warm: true });
   for (const t of this.torches) out.push({ x: t.x, y: t.y * TILT - 52, r: 230 * t.flicker, a: 0.9, warm: true });
+  for (const p of this.props) {
+    if (p.name === 'brazier') out.push({ x: p.x, y: p.y * TILT - 26, r: 190, a: 0.85, warm: true });
+  }
   if (this.boss && this.boss.alive) out.push({ x: this.boss.x, y: this.boss.y * TILT - this.boss.radius * 2, r: 170, a: 0.7, cold: true });
   if (this.nova) out.push({ x: this.nova.x, y: this.nova.y * TILT, r: this.nova.radius * 1.4, a: this.nova.life / this.nova.maxLife, cold: true });
   for (const ring of this.rings) out.push({ x: ring.x, y: ring.y * TILT, r: ring.maxR * 0.8, a: (ring.life / ring.maxLife) * 0.6, warm: true });

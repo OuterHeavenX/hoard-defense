@@ -53,6 +53,10 @@ class Game {
     this.particlePool = [];
     this.nodes = this.buildNodes();
     this.torches = this.buildTorches();
+    this.barricades = this.buildBarricades();
+    this.wallSegs = this.buildWallSegs();
+    this.props = this.buildProps();
+    this.activeBarricade = null;
     this.kills = 0;
     this.goldBanked = 0;
     this.decals = [];
@@ -103,6 +107,34 @@ class Game {
   /* Flame poles: around the arena's edge and one beside every node, or
      along the corridor walls between the stairs on the gauntlet. They are
      the arena's light - the fight happens in torchlight, not in the dark. */
+  /* Barricade runs come from the arena. They are only ever lines, because a
+     line is enough to make the horde choose a side and cheap enough to test
+     a thousand bodies against. */
+  buildBarricades() {
+    const seg = typeof PROP_MANIFEST !== 'undefined' ? PROP_MANIFEST.seg : 46;
+    const cx = WORLD_W / 2, cy = WORLD_H / 2;
+    return (this.arena.barricades || []).map(
+      (b) => new Barricade(cx + b.x, cy + b.y, b.len, b.vertical, seg));
+  }
+
+  /* One drawable per segment, made once. Segments never move, so the only
+     per-frame work is deciding which ones are still standing. */
+  buildWallSegs() {
+    const out = [];
+    for (const bar of this.barricades) {
+      for (let i = 0; i < bar.count; i++) {
+        const c = bar.segCentre(i);
+        out.push({ kind: 'wall', x: c.x, y: c.y, bar, i });
+      }
+    }
+    return out;
+  }
+
+  buildProps() {
+    const cx = WORLD_W / 2, cy = WORLD_H / 2;
+    return (this.arena.props || []).map((p) => ({ kind: 'prop', x: cx + p.x, y: cy + p.y, name: p.kind }));
+  }
+
   buildTorches() {
     const out = [];
     const put = (x, y) => out.push({ kind: 'torch', x, y, phase: rand(0, TAU), flicker: 1 });
@@ -350,6 +382,7 @@ class Game {
     this.rebuildGrid();
     this.updateEnemies(dt);
     this.updateNodes(dt);
+    this.updateBarricades(dt);
     this.updateBullets(dt);
     this.updateCoins(dt);
     this.updateParticles(dt);
@@ -516,8 +549,10 @@ class Game {
 
       e.vx = mx * e.speed + sx * 48;
       e.vy = my * e.speed + sy * 48;
+      const wasX = e.x, wasY = e.y;
       e.x += e.vx * dt;
       e.y += e.vy * dt;
+      if (this.barricades.length) this.blockAtWall(e, wasX, wasY);
 
       // Stride speed follows actual movement so the crowd never moonwalks.
       e.anim += Math.hypot(e.vx, e.vy) * dt * 0.09;
@@ -547,6 +582,83 @@ class Game {
           this.burst(p.x, p.y, 6, '#ff6b6b', 150);
           this.audio.hurt();
         }
+      }
+    }
+  }
+
+  /* Stops a body at a standing wall and lets it chew. Only the component
+     crossing the line is cancelled, so the horde slides along the wall and
+     pours around the end or through a hole on its own - the funnel is the
+     wall's shape, not a path anyone had to compute. The side to push back to
+     comes from where the body was a frame ago, not from which side of the
+     line it landed on, so a fast runner is never spat out the far side. */
+  blockAtWall(e, wasX, wasY) {
+    const bars = this.barricades;
+    for (let b = 0; b < bars.length; b++) {
+      const bar = bars[b];
+      if (bar.level === 0) continue;
+      const i = bar.segmentAt(e.x, e.y, e.radius * 0.55);
+      if (i < 0) continue;
+
+      // A boss walks through the wall and takes it with him.
+      if (e.type === 'boss') {
+        if (bar.damageSegment(i, 420 * (e.slamming ? 3 : 1))) this.breakSegment(bar, i);
+        continue;
+      }
+
+      const gap = bar.half + e.radius * 0.55;
+      if (bar.vertical) {
+        e.x = bar.x + (wasX < bar.x ? -gap : gap);
+        e.vx = 0;
+      } else {
+        e.y = bar.y + (wasY < bar.y ? -gap : gap);
+        e.vy = 0;
+      }
+      if (e.touchTimer <= 0) {
+        e.touchTimer = 0.6;
+        // Scaled well down from what a body does to the player: a wall is
+        // meant to buy a horde's worth of seconds, not fall to the first rank.
+        if (bar.damageSegment(i, e.damage * 0.5)) this.breakSegment(bar, i);
+      }
+    }
+  }
+
+  breakSegment(bar, i) {
+    const c = bar.segCentre(i);
+    this.burst(c.x, c.y, 14, '#b9a78a', 190);
+    this.addDecal(c.x, c.y, 26, 'rgba(30,24,18,0.5)');
+    this.shake = Math.min(12, this.shake + 2);
+    this.audio.hurt();
+    if (bar.standing === 0) this.announce('WALL DOWN', '#ffb36b');
+  }
+
+  /* Pour into a wall the same way as into a turret: stand on the line and it
+     takes the gold, patching holes before it will raise another tier. */
+  updateBarricades(dt) {
+    const p = this.player;
+    this.activeBarricade = null;
+    for (const bar of this.barricades) {
+      bar.pulse = Math.max(0, bar.pulse - dt * 1.6);
+      bar.recentFeed = Math.max(0, bar.recentFeed - dt);
+      for (let i = 0; i < bar.count; i++) {
+        if (bar.hit[i] > 0) bar.hit[i] = Math.max(0, bar.hit[i] - dt * 4);
+      }
+
+      if (dist2(p.x, p.y, bar.padX, bar.padY) > bar.padRadius * bar.padRadius) continue;
+      this.activeBarricade = bar;
+
+      if (this.activeNode || p.gold < 1) continue;
+      const spent = bar.feed(Math.min(p.gold, DEPOSIT_RATE * this.depositMul * dt));
+      if (spent > 0) {
+        p.gold -= spent;
+        this.audio.deposit();
+      }
+      if (bar.pulse === 1) {
+        const c = bar.segCentre((bar.count / 2) | 0);
+        this.announce(['', 'PALISADE', 'STONE WALL', 'RAMPART'][bar.level], '#ffd9a0');
+        this.burst(c.x, c.y, 20, '#ffd9a0', 220);
+        this.rings.push({ x: c.x, y: c.y, r: 20, maxR: 180, life: 0.5, maxLife: 0.5, color: '255,217,160' });
+        this.audio.upgrade();
       }
     }
   }

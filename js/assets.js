@@ -6,6 +6,7 @@
 const Assets = {
   towers: [],            // per level: HTMLImageElement or null
   towerPacks: {},        // family -> { meta, levels: [null, img x5] }
+  propSets: {},          // family -> { walls: [[ew, ns] per tier], props: {name: img} }
   ground: {},            // key -> HTMLImageElement
   golem: null,           // { walk: [img], slam: [img] } once loaded
   chars: {},             // type -> { meta, frames: [[base, flip, flash, flipflash]] }
@@ -40,6 +41,27 @@ const Assets = {
       }
     }
 
+    // Walls and camp dressing, per fortress family. Published whole or not at
+    // all, so a run never draws half a wall.
+    const props = typeof PROP_MANIFEST !== 'undefined' ? PROP_MANIFEST : null;
+    const propSets = {};
+    if (props) {
+      this.propMeta = props;
+      for (const family in props.families) {
+        const src = props.families[family];
+        const set = { meta: src, walls: src.walls.map(() => [null, null]), props: {}, want: 0, got: 0 };
+        src.walls.forEach((pair, tier) => pair.forEach((entry, dir) => {
+          set.want++;
+          pending.push(this.image('assets/' + entry.file).then((img) => { if (img) { set.walls[tier][dir] = img; set.got++; } }));
+        }));
+        for (const name in src.props) {
+          set.want++;
+          pending.push(this.image('assets/' + src.props[name].file).then((img) => { if (img) { set.props[name] = img; set.got++; } }));
+        }
+        propSets[family] = set;
+      }
+    }
+
     for (const key of ['stone', 'earth', 'ash']) {
       pending.push(this.image('assets/ground_' + key + '.png').then((img) => { this.ground[key] = img; }));
     }
@@ -70,6 +92,10 @@ const Assets = {
     Promise.all(pending).then(() => {
       // A character with any missing frame falls back to the placeholder
       // rather than blinking between the two.
+      for (const family in propSets) {
+        const set = propSets[family];
+        if (set.got === set.want) this.propSets[family] = set;
+      }
       for (const family in packSets) {
         const set = packSets[family];
         if (set.entries.every((entry, i) => !entry || set.levels[i])) this.towerPacks[family] = set;

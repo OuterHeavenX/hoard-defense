@@ -7,6 +7,21 @@
 const ARENAS = [
   {
     id: 'dustbowl',
+    walls: 'elven',
+    barricades: [
+      { x: 0, y: -470, len: 700 },
+      { x: 0, y: 470, len: 700 },
+      { x: -640, y: 0, len: 520, vertical: true },
+      { x: 640, y: 0, len: 520, vertical: true },
+    ],
+    props: [
+      { kind: 'gate', x: 0, y: -640 },
+      { kind: 'arsenal', x: -760, y: -430 },
+      { kind: 'barracks', x: 730, y: 470 },
+      { kind: 'brazier', x: -180, y: -300 },
+      { kind: 'brazier', x: 180, y: 300 },
+      { kind: 'stack', x: -690, y: 380 },
+    ],
     towers: 'archer',       // warm earth, elven sandstone archer towers
     name: 'THE DUST BOWL',
     blurb: 'Open ground, six nodes in a wide ring. Nowhere to hide and nothing in your way.',
@@ -29,6 +44,19 @@ const ARENAS = [
   },
   {
     id: 'foundry',
+    walls: 'orc',
+    barricades: [
+      { x: 0, y: -400, len: 620 },
+      { x: 0, y: 400, len: 620 },
+    ],
+    props: [
+      { kind: 'gate', x: 0, y: -520 },
+      { kind: 'arsenal', x: -600, y: 330 },
+      { kind: 'shed', x: 580, y: -330 },
+      { kind: 'brazier', x: -140, y: 0 },
+      { kind: 'brazier', x: 140, y: 0 },
+      { kind: 'stack', x: 540, y: 400 },
+    ],
     towers: 'cannon',       // ash and embers, iron cannon towers
     name: 'THE FOUNDRY',
     blurb: 'Tighter, hotter, and they come faster. Four nodes to hold instead of six.',
@@ -50,6 +78,21 @@ const ARENAS = [
   },
   {
     id: 'ascent',
+    walls: 'orc',
+    barricades: [
+      { x: 0, y: 950, len: 620 },
+      { x: 0, y: 400, len: 620 },
+      { x: 0, y: -150, len: 620 },
+      { x: 0, y: -700, len: 620 },
+    ],
+    props: [
+      { kind: 'brazier', x: -400, y: 1000 },
+      { kind: 'brazier', x: 400, y: 450 },
+      { kind: 'brazier', x: -400, y: -100 },
+      { kind: 'shed', x: 390, y: -760 },
+      { kind: 'stack', x: -390, y: -1250 },
+      { kind: 'bell', x: 400, y: 1380 },
+    ],
     towers: 'orc',          // the orc fortress the corridor climbs through
     void: '#0e1014',      // the dark either side of the corridor
     name: 'THE ASCENT',
@@ -83,6 +126,21 @@ const ARENAS = [
   },
   {
     id: 'crossroads',
+    walls: 'elven',
+    barricades: [
+      { x: 0, y: -300, len: 480 },
+      { x: 0, y: 300, len: 480 },
+      { x: -420, y: 0, len: 420, vertical: true },
+      { x: 420, y: 0, len: 420, vertical: true },
+    ],
+    props: [
+      { kind: 'gate', x: 0, y: -600 },
+      { kind: 'barracks', x: -690, y: 440 },
+      { kind: 'arsenal', x: 700, y: -430 },
+      { kind: 'brazier', x: -220, y: -170 },
+      { kind: 'brazier', x: 220, y: 170 },
+      { kind: 'bell', x: 640, y: 430 },
+    ],
     towers: 'ballista',     // earth again, but bolt throwers
     name: 'THE CROSSROADS',
     blurb: 'Two roads meet. One node at the junction buys time; the four at the road ends decide whether you keep it.',
@@ -107,6 +165,18 @@ const ARENAS = [
   },
   {
     id: 'bridge',
+    walls: 'elven',
+    barricades: [
+      { x: -520, y: 0, len: 420, vertical: true },
+      { x: 520, y: 0, len: 420, vertical: true },
+    ],
+    props: [
+      { kind: 'gate', x: -1080, y: 0 },
+      { kind: 'gate', x: 1080, y: 0 },
+      { kind: 'brazier', x: -300, y: -230 },
+      { kind: 'brazier', x: 300, y: 230 },
+      { kind: 'stack', x: -60, y: -240 },
+    ],
     towers: 'elven',        // the high elven fortress over the chasm
     void: '#0a0f1a',        // the chasm
     name: 'THE BRIDGE',
@@ -131,6 +201,18 @@ const ARENAS = [
   },
   {
     id: 'pit',
+    walls: 'orc',
+    barricades: [
+      { x: 0, y: -300, len: 520 },
+      { x: 0, y: 300, len: 520 },
+    ],
+    props: [
+      { kind: 'gate', x: 0, y: -420 },
+      { kind: 'shed', x: -470, y: 330 },
+      { kind: 'brazier', x: -330, y: -60 },
+      { kind: 'brazier', x: 330, y: -60 },
+      { kind: 'stack', x: 450, y: 350 },
+    ],
     towers: 'flame',        // fire towers for a pit that already burns
     name: 'THE PIT',
     blurb: 'Nowhere to run. Three nodes in a tight triangle at the centre: hold the middle or lose everything at once.',
@@ -151,6 +233,21 @@ const ARENAS = [
   },
   {
     id: 'bastion',
+    walls: 'orc',
+    barricades: [
+      { x: -420, y: -330, len: 520 },
+      { x: 420, y: -330, len: 520 },
+      { x: 0, y: 340, len: 560 },
+    ],
+    props: [
+      { kind: 'gate', x: 0, y: -520 },
+      { kind: 'barracks', x: -860, y: 400 },
+      { kind: 'arsenal', x: 860, y: 390 },
+      { kind: 'brazier', x: -180, y: -170 },
+      { kind: 'brazier', x: 180, y: -170 },
+      { kind: 'bell', x: -880, y: -330 },
+      { kind: 'stack', x: 840, y: -350 },
+    ],
     towers: 'arcane',       // arcane spires on the last stand
     name: 'THE BASTION',
     blurb: 'They come from the north, all of them. Five nodes in a line make a wall; the surges try to walk around its ends.',

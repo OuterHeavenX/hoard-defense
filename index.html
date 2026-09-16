@@ -22,6 +22,7 @@
     <div class="chips">
       <span class="chip gold-chip">&#9679; <b id="gold">0</b> gold</span>
       <span class="chip" id="dash">DASH</span>
+      <span class="chip hidden" id="fps">60 FPS</span>
     </div>
   </div>
   <div class="hud-right">
@@ -95,6 +96,18 @@
       <input id="opt-zoom" type="range" min="45" max="130" value="80">
     </div>
     <div class="setting">
+      <label>Quality</label>
+      <div class="seg">
+        <button class="toggle" data-quality="low" aria-pressed="false">LOW</button>
+        <button class="toggle" data-quality="medium" aria-pressed="true">MED</button>
+        <button class="toggle" data-quality="high" aria-pressed="false">HIGH</button>
+      </div>
+    </div>
+    <div class="setting">
+      <label for="opt-fps">Show FPS</label>
+      <button id="opt-fps" class="toggle" aria-pressed="false">OFF</button>
+    </div>
+    <div class="setting">
       <label for="opt-lighting">Lighting &amp; glow</label>
       <button id="opt-lighting" class="toggle" aria-pressed="true">ON</button>
     </div>
@@ -143,6 +156,7 @@
 <script src="js/utils.js"></script>
 <script src="assets/manifest.js"></script>
 <script src="assets/golem_manifest.js"></script>
+<script src="assets/char_manifest.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/arenas.js"></script>
 <script src="js/spatial.js"></script>

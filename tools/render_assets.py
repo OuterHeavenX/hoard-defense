@@ -347,10 +347,16 @@ def earth_material(name, base, dark):
     return m
 
 
+TILE_UNITS = 16       # world span of one floor tile, in Blender units
+TILE_PX = 512         # the game repeats the tile at 1 image px per world px
+
+
 def render_ground():
     """Top-down tiles. The flagstone brick count divides the tile exactly so
     the coursing repeats seamlessly; the noise does not, so it is kept low
-    contrast where it would show a seam."""
+    contrast where it would show a seam. Brick size is fixed per Blender unit,
+    so a larger tile means fewer visible seams and a sharper floor, not bigger
+    bricks."""
     tiles = [
         ('ground_stone.png', 'flag', dict(base=(0.17, 0.18, 0.20), mortar=(0.06, 0.06, 0.07))),
         ('ground_earth.png', 'earth', dict(base=(0.16, 0.15, 0.10), dark=(0.06, 0.06, 0.04))),
@@ -363,24 +369,24 @@ def render_ground():
             m = stone_material('floor', base=pal['base'], mortar=pal['mortar'], brick_scale=1.0, cylindrical=False)
             brick = next(n for n in m.node_tree.nodes if n.type == 'TEX_BRICK')
             brick.inputs['Scale'].default_value = 1.0
-            brick.inputs['Brick Width'].default_value = 1.0     # 8 across an 8-unit tile
-            brick.inputs['Row Height'].default_value = 0.5      # 16 rows
+            brick.inputs['Brick Width'].default_value = 1.0     # TILE_UNITS across the tile
+            brick.inputs['Row Height'].default_value = 0.5      # 2 * TILE_UNITS rows
             brick.inputs['Mortar Size'].default_value = 0.05
             ramp = next(n for n in m.node_tree.nodes if n.type == 'VALTORGB')
             ramp.color_ramp.elements[0].color = (0.86, 0.85, 0.84, 1)   # quieter variation
         else:
             m = earth_material('floor', pal['base'], pal['dark'])
-        bpy.ops.mesh.primitive_plane_add(size=8, location=(0, 0, 0))
+        bpy.ops.mesh.primitive_plane_add(size=TILE_UNITS, location=(0, 0, 0))
         plane = bpy.context.active_object
         plane.data.materials.append(m)
         cam_data = bpy.data.cameras.new('Cam')
         cam_data.type = 'ORTHO'
-        cam_data.ortho_scale = 8
+        cam_data.ortho_scale = TILE_UNITS
         cam = bpy.data.objects.new('Cam', cam_data)
         sc.collection.objects.link(cam)
         sc.camera = cam
         cam.location = (0, 0, 40)
-        sc.render.resolution_x = sc.render.resolution_y = 256
+        sc.render.resolution_x = sc.render.resolution_y = TILE_PX
         for o in sc.collection.objects:
             if o.type == 'LIGHT':
                 o.rotation_euler = (math.radians(18), math.radians(-8), math.radians(-35))

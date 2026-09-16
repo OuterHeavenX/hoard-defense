@@ -27,6 +27,7 @@ class Game {
     this.audio = new Audio();
     this.shakeEnabled = true;
     this.lightingEnabled = true;
+    this.quality = 'medium';
     this.zoom = 0.8;            // camera distance multiplier, player-adjustable
     this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
     this.ground = makeGroundPattern(this.ctx, this.arena.ground, this.arena.tile);
@@ -1053,7 +1054,7 @@ class Game {
     const kind = this.arena.ambient;
     if (kind) {
       this.ambientTimer -= dt;
-      if (this.ambientTimer <= 0 && this.ambient.length < 70) {
+      if (this.ambientTimer <= 0 && this.ambient.length < (this.quality === 'high' ? 90 : 40)) {
         this.ambientTimer = 0.05;
         // Born just off the camera's window so drift carries them through it.
         const cx = this.camera.x, cy = this.camera.y;
@@ -1138,7 +1139,22 @@ function aimTowards(current, target, step) {
    loaded, else the procedural flecked dirt. One fill per frame either way. */
 function makeGroundPattern(ctx, palette, tileKey) {
   const img = tileKey && Assets.ground[tileKey];
-  if (img) return ctx.createPattern(img, 'repeat');
+  if (img) {
+    // The flagstone coursing is built to tile; the earth noise is not, so it
+    // is laid as a 2x2 mirror so every edge meets its own reflection.
+    if (tileKey === 'stone') return ctx.createPattern(img, 'repeat');
+    const c = document.createElement('canvas');
+    c.width = img.width * 2; c.height = img.height * 2;
+    const g = c.getContext('2d');
+    for (let i = 0; i < 4; i++) {
+      g.save();
+      g.translate(i & 1 ? img.width * 2 : 0, i & 2 ? img.height * 2 : 0);
+      g.scale(i & 1 ? -1 : 1, i & 2 ? -1 : 1);
+      g.drawImage(img, 0, 0);
+      g.restore();
+    }
+    return ctx.createPattern(c, 'repeat');
+  }
   const pal = palette || { base: '#2b2f26', fleck: [[40, 70], [44, 74], [34, 56]] };
   const size = 128;
   const c = document.createElement('canvas');

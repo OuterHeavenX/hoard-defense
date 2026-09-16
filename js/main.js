@@ -42,9 +42,17 @@
   window.__game = game;   // handy for tinkering from the console
   window.__music = music;
 
+  // Canvas backing resolution is capped per quality preset. A 4K monitor
+  // otherwise means every full-screen pass touches 8M pixels a frame; the
+  // game is upscaled by the browser from the cap instead, which is what
+  // real games do and is invisible at this art scale.
+  const BACKING_CAP = { low: 1280, medium: 1920, high: 2560 };
+  let quality = 'medium';
+  try { const q = localStorage.getItem('hoard.quality'); if (BACKING_CAP[q]) quality = q; } catch (e) { /* private mode */ }
+
   function resize() {
-    const dpr = Math.min(devicePixelRatio || 1, 2);
     const w = innerWidth, h = innerHeight;
+    const dpr = Math.min(devicePixelRatio || 1, 2, BACKING_CAP[quality] / w);
     canvas.width = Math.floor(w * dpr);
     canvas.height = Math.floor(h * dpr);
     canvas.style.width = w + 'px';
@@ -66,6 +74,33 @@
   try { lightingEnabled = localStorage.getItem('hoard.lighting') !== 'off'; } catch (e) { /* private mode */ }
   game.lightingEnabled = lightingEnabled;
   const lightingBtn = document.getElementById('opt-lighting');
+
+  // Quality preset: backing cap plus the cost knobs the renderer reads.
+  const qualityBtns = [...document.querySelectorAll('[data-quality]')];
+  function applyQuality(q) {
+    quality = q;
+    game.quality = q;
+    try { localStorage.setItem('hoard.quality', q); } catch (e) { /* ignore */ }
+    for (const b of qualityBtns) b.setAttribute('aria-pressed', String(b.dataset.quality === q));
+    resize();
+  }
+  for (const b of qualityBtns) b.addEventListener('click', () => { game.audio.click(); applyQuality(b.dataset.quality); });
+  applyQuality(quality);
+
+  // FPS readout, off by default.
+  let showFps = false;
+  try { showFps = localStorage.getItem('hoard.fps') === 'on'; } catch (e) { /* ignore */ }
+  const fpsBtn = document.getElementById('opt-fps');
+  const fpsChip = document.getElementById('fps');
+  paintToggle(fpsBtn, showFps);
+  fpsChip.classList.toggle('hidden', !showFps);
+  fpsBtn.addEventListener('click', () => {
+    showFps = !showFps;
+    paintToggle(fpsBtn, showFps);
+    fpsChip.classList.toggle('hidden', !showFps);
+    try { localStorage.setItem('hoard.fps', showFps ? 'on' : 'off'); } catch (e) { /* ignore */ }
+    game.audio.click();
+  });
 
   // Camera distance: persisted, adjustable from settings and from the HUD.
   let zoom = 0.8;
@@ -344,6 +379,7 @@
   let accumulator = 0;
   let previous = performance.now();
   let previousState = game.state;
+  let fpsAvg = 60, fpsTick = 0;
 
   function frame(now) {
     requestAnimationFrame(frame);
@@ -351,6 +387,10 @@
     // Clamp so a backgrounded tab doesn't unleash a spiral of catch-up steps.
     const elapsed = Math.min((now - previous) / 1000, 0.25);
     previous = now;
+    if (showFps) {
+      fpsAvg += ((elapsed > 0 ? 1 / elapsed : 60) - fpsAvg) * 0.08;
+      if (++fpsTick % 10 === 0) fpsChip.textContent = Math.round(fpsAvg) + ' FPS';
+    }
 
     if (game.input.takePause() && game.state !== 'menu' && game.state !== 'levelup') {
       if (game.state === 'playing') game.state = 'paused';
@@ -360,12 +400,15 @@
     if (game.state === 'playing') {
       accumulator += elapsed;
       let steps = 0;
-      while (accumulator >= STEP && steps < 5) {
+      // At most three catch-up steps: on a slow frame, three sims plus a
+      // draw is already more than the frame budget, and a fourth makes the
+      // next frame slower still - the spiral that reads as stutter.
+      while (accumulator >= STEP && steps < 3) {
         game.update(STEP);
         accumulator -= STEP;
         steps++;
       }
-      if (steps === 5) accumulator = 0;
+      if (steps === 3) accumulator = 0;
 
       // Drafted between frames so a level-up never lands mid-step.
       const choices = game.takeLevelUp();

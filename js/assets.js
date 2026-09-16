@@ -7,6 +7,7 @@ const Assets = {
   towers: [],            // per level: HTMLImageElement or null
   ground: {},            // key -> HTMLImageElement
   golem: null,           // { walk: [img], slam: [img] } once loaded
+  chars: {},             // type -> { meta, frames: [[base, flip, flash, flipflash]] }
   tintCache: {},         // bossType:anim:frame -> tinted canvas
   ready: false,
 
@@ -32,7 +33,28 @@ const Assets = {
       pending.push(Promise.resolve().then(() => { this.golem = set; }));
     }
 
+    // Character sets are assembled privately and published to this.chars only
+    // once every frame is in, so the attract mode never sees a half-loaded set.
+    const chars = typeof CHAR_MANIFEST !== 'undefined' ? CHAR_MANIFEST : null;
+    const charSets = {};
+    if (chars) {
+      for (const type in chars.characters) {
+        const meta = chars.characters[type];
+        const set = { meta, unitPx: chars.unitPx, ss: chars.ss, frames: [] };
+        meta.frames.forEach((file, i) => pending.push(this.image('assets/' + file).then((img) => {
+          if (img) set.frames[i] = this.variants(img);
+        })));
+        charSets[type] = set;
+      }
+    }
+
     Promise.all(pending).then(() => {
+      // A character with any missing frame falls back to the placeholder
+      // rather than blinking between the two.
+      for (const type in charSets) {
+        const set = charSets[type];
+        if (set.frames.length === set.meta.frames.length && set.frames.every((f) => !!f)) this.chars[type] = set;
+      }
       this.ready = true;
       if (onDone) onDone();
     });
@@ -101,4 +123,25 @@ Assets.golemFrame = function (bossType, anim, index) {
   }
   this.tintCache[key] = c;
   return c;
+};
+
+/* The four drawn forms of one frame, built once: base, mirrored, hit-flash,
+   and mirrored hit-flash. A thousand bodies a frame cannot afford a
+   save/scale/restore each to face left, so the mirror is pre-baked. */
+Assets.variants = function (img) {
+  const make = (flip, flash) => {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    if (flip) { g.translate(img.width, 0); g.scale(-1, 1); }
+    g.drawImage(img, 0, 0);
+    if (flash) {
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = 'rgba(255,255,255,0.75)';
+      g.fillRect(0, 0, c.width, c.height);
+    }
+    return c;
+  };
+  return [img, make(true, false), make(false, true), make(true, true)];
 };

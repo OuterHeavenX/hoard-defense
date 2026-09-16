@@ -67,12 +67,16 @@ Game.prototype.draw = function () {
 /* The floor is the one thing drawn in squashed space, so its texture
    foreshortens with the plane instead of sliding across it. */
 Game.prototype.drawGround = function (ctx) {
+  // Only the visible slice of the floor: a pattern fill over the whole
+  // world rect is clipped, but the pattern still gets sampled for it.
+  const x0 = Math.max(0, this._camX), x1 = Math.min(WORLD_W, this._camX + this.view.w);
+  const y0 = Math.max(0, this._camPY / TILT), y1 = Math.min(WORLD_H, (this._camPY + this.view.h) / TILT);
   ctx.save();
   ctx.scale(1, TILT);
   ctx.fillStyle = this.ground;
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   ctx.fillStyle = 'rgba(120,130,96,0.06)';
-  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+  ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
   ctx.restore();
 
   // Border drawn unsquashed so the line keeps an even weight all the way
@@ -197,21 +201,26 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
   }
 };
 
+function frame_is_rendered(type) {
+  return typeof Assets !== 'undefined' && !!Assets.chars[type];
+}
+
 Game.prototype.drawEnemy = function (ctx, e) {
   if (e.type === 'boss') return this.drawBoss(ctx, e);
   const frame = characterFrame(e.type, e.anim | 0, e.flip, e.flash > 0.35);
   const k = e.scale;
   const fw = frame.w * k, fh = frame.h * k;
   const py = e.y * TILT - e.z;
-  ctx.drawImage(frame.canvas, e.x - fw / 2, py - fh, fw, fh);
+  ctx.drawImage(frame.canvas, e.x - frame.ox * k, py - frame.oy * k, fw, fh);
 
   if (e.type === 'brute') {
     const pct = clamp(e.hp / e.maxHp, 0, 1);
-    const barW = fw * 0.8;
+    const barW = 40 * k;
+    const top = py - frame.oy * k - 9;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(e.x - barW / 2, py - fh - 9, barW, 5);
+    ctx.fillRect(e.x - barW / 2, top, barW, 5);
     ctx.fillStyle = '#ff6b6b';
-    ctx.fillRect(e.x - barW / 2, py - fh - 9, barW * pct, 5);
+    ctx.fillRect(e.x - barW / 2, top, barW * pct, 5);
   }
 };
 
@@ -396,10 +405,18 @@ Game.prototype.drawAlly = function (ctx, a) {
 
   const frame = characterFrame('ally', a.anim | 0, a.flip, a.hurtTimer > 0.15);
   ctx.globalAlpha = a.down ? 0.55 : 1;
-  ctx.drawImage(frame.canvas, a.x - frame.w / 2, py - frame.h, frame.w, frame.h);
+  ctx.drawImage(frame.canvas, a.x - frame.ox, py - frame.oy, frame.w, frame.h);
   ctx.globalAlpha = 1;
 
-  if (!a.down) {
+  if (!a.down && frame.rendered && a.firing) {
+    // The rendered Juggernaut carries his gatling; only the flash is drawn.
+    ctx.fillStyle = '#fff0b8';
+    ctx.beginPath();
+    ctx.arc(a.x + Math.cos(a.facing) * 44, py - frame.oy * 0.5 + Math.sin(a.facing) * 44 * TILT, 6 + Math.random() * 4, 0, TAU);
+    ctx.fill();
+  }
+
+  if (!a.down && !frame.rendered) {
     // Gatling: three barrels fanned around the aim, rotating while spun up.
     const chest = py - frame.h * 0.52;
     const len = 34;
@@ -448,7 +465,7 @@ Game.prototype.drawAlly = function (ctx, a) {
 
   // Health bar, and a countdown while down.
   const barW = 54;
-  const top = py - frame.h - 12;
+  const top = py - frame.oy - 12;
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(a.x - barW / 2, top, barW, 5);
   ctx.fillStyle = a.down ? '#8b9678' : '#8a9a6b';
@@ -526,18 +543,23 @@ Game.prototype.drawPlayer = function (ctx, p) {
   ctx.stroke();
 
   const blink = p.invuln > 0 && Math.floor(p.invuln * 20) % 2 === 1;
-  const frame = characterFrame('player', p.anim | 0, p.flip, blink);
-  ctx.drawImage(frame.canvas, p.x - frame.w / 2, py - frame.h, frame.w, frame.h);
+  // The rendered hero faces where he walks; the placeholder aimed a drawn
+  // rifle, so it keeps that.
+  const flip = frame_is_rendered('player') ? Math.cos(p.facing) < 0 : p.flip;
+  const frame = characterFrame('player', p.anim | 0, flip, blink);
+  ctx.drawImage(frame.canvas, p.x - frame.ox, py - frame.oy, frame.w, frame.h);
 
-  // Rifle, aimed in projected space so it swings around the body correctly.
-  const chest = py - frame.h * 0.55;
-  ctx.strokeStyle = '#1b2436';
-  ctx.lineWidth = 5;
-  ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(p.x, chest);
-  ctx.lineTo(p.x + Math.cos(p.facing) * 24, chest + Math.sin(p.facing) * 24 * TILT);
-  ctx.stroke();
+  if (!frame.rendered) {
+    // Rifle, aimed in projected space so it swings around the body correctly.
+    const chest = py - frame.h * 0.55;
+    ctx.strokeStyle = '#1b2436';
+    ctx.lineWidth = 5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(p.x, chest);
+    ctx.lineTo(p.x + Math.cos(p.facing) * 24, chest + Math.sin(p.facing) * 24 * TILT);
+    ctx.stroke();
+  }
 };
 
 Game.prototype.drawTurret = function (ctx, node) {
@@ -805,12 +827,13 @@ Game.prototype.drawTrail = function (ctx) {
     const a = clamp(t.life / t.maxLife, 0, 1) * 0.45;
     const frame = characterFrame('player', t.anim | 0, t.flip, true);
     ctx.globalAlpha = a;
-    ctx.drawImage(frame.canvas, t.x - frame.w / 2, t.y * TILT - frame.h, frame.w, frame.h);
+    ctx.drawImage(frame.canvas, t.x - frame.ox, t.y * TILT - frame.oy, frame.w, frame.h);
   }
   ctx.globalAlpha = 1;
 };
 
 Game.prototype.drawAmbient = function (ctx) {
+  if (this.quality === 'low') return;
   for (const m of this.ambient) {
     const a = Math.sin(clamp(m.life / m.maxLife, 0, 1) * Math.PI);
     const py = m.y * TILT - m.z;
@@ -842,6 +865,26 @@ Game.prototype.lightLayer = function (w, h) {
   return { c: this._light, scale };
 };
 
+/* One soft radial sprite per tone, built once. Drawing it scaled is a
+   plain blit; createRadialGradient per light per frame was ~50 gradient
+   allocations and rasterisations every frame. */
+Game.prototype.lightSprite = function (tone) {
+  this._lightSprites = this._lightSprites || {};
+  let c = this._lightSprites[tone];
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, `rgba(${tone},1)`);
+  grad.addColorStop(0.45, `rgba(${tone},0.42)`);
+  grad.addColorStop(1, `rgba(${tone},0)`);
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  this._lightSprites[tone] = c;
+  return c;
+};
+
 Game.prototype.collectLights = function (out) {
   out.length = 0;
   const p = this.player;
@@ -859,15 +902,12 @@ Game.prototype.collectLights = function (out) {
 };
 
 Game.prototype.drawLighting = function (ctx, camX, camPY, w, h, zoom) {
-  if (!this.lightingEnabled) return;
+  if (!this.lightingEnabled || this.quality === 'low') return;
   const { c, scale } = this.lightLayer(w, h);
   const g = c.getContext('2d');
   const lights = this.collectLights(this._lights || (this._lights = []));
 
-  // Additive, not subtractive. A subtractive layer left blobs of dark
-  // between the torch pools and read as smoke; this adds warm light on top
-  // of a fully visible arena instead. The faint base tint is only there so
-  // the lit pools have something to lift out of.
+  // Additive light on a fully visible arena, drawn as cached sprite blits.
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalCompositeOperation = 'source-over';
   g.clearRect(0, 0, c.width, c.height);
@@ -875,18 +915,14 @@ Game.prototype.drawLighting = function (ctx, camX, camPY, w, h, zoom) {
   for (const L of lights) {
     const sx = (L.x - camX) * scale, sy = (L.y - camPY) * scale, sr = L.r * scale;
     if (sx < -sr || sx > c.width + sr || sy < -sr || sy > c.height + sr) continue;
-    const grad = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
     const tone = L.cold ? '140,200,255' : L.warm ? '255,170,80' : '190,210,230';
-    grad.addColorStop(0, `rgba(${tone},${0.32 * L.a})`);
-    grad.addColorStop(0.45, `rgba(${tone},${0.14 * L.a})`);
-    grad.addColorStop(1, `rgba(${tone},0)`);
-    g.fillStyle = grad;
-    g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+    g.globalAlpha = 0.32 * L.a;
+    g.drawImage(this.lightSprite(tone), sx - sr, sy - sr, sr * 2, sr * 2);
   }
+  g.globalAlpha = 1;
 
   ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
   ctx.save();
-  // A whisper of dusk so the light has contrast, then the light itself.
   ctx.fillStyle = this.attract ? 'rgba(10,10,18,0.10)' : 'rgba(10,10,18,0.12)';
   ctx.fillRect(0, 0, w, h);
   ctx.globalCompositeOperation = 'lighter';
@@ -894,74 +930,45 @@ Game.prototype.drawLighting = function (ctx, camX, camPY, w, h, zoom) {
   ctx.restore();
 };
 
-/* Bloom: emissive things drawn small, blurred, and added back over the
-   scene. Bullets, muzzle flashes, turret heads, the boss's eyes, embers. */
+/* Glow without a blur filter. ctx.filter = blur() re-blurs a full layer
+   every frame and is the single slowest thing canvas2D can be asked to do;
+   each emissive thing gets a small soft sprite blit instead. */
 Game.prototype.drawGlow = function (ctx, camX, camPY, w, h, zoom) {
-  if (!this.lightingEnabled) return;
-  const scale = 0.25;
-  const gw = Math.max(1, Math.ceil(w * scale)), gh = Math.max(1, Math.ceil(h * scale));
-  if (!this._glow || this._glow.width !== gw || this._glow.height !== gh) {
-    this._glow = document.createElement('canvas');
-    this._glow.width = gw; this._glow.height = gh;
-  }
-  const c = this._glow;
-  const g = c.getContext('2d');
-  g.setTransform(1, 0, 0, 1, 0, 0);
-  g.globalCompositeOperation = 'source-over';
-  g.clearRect(0, 0, gw, gh);
-  g.setTransform(scale, 0, 0, scale, -camX * scale, -camPY * scale);
+  if (!this.lightingEnabled || this.quality === 'low') return;
+  ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+  ctx.save();
+  ctx.translate(-camX, -camPY);
+  ctx.globalCompositeOperation = 'lighter';
 
-  g.lineCap = 'round';
-  g.lineWidth = 7;
-  for (const b of this.bullets) {
-    const py = b.y * TILT - b.z;
-    g.strokeStyle = b.color;
-    g.beginPath();
-    g.moveTo(b.x, py);
-    g.lineTo(b.x - b.vx * 0.02, py - b.vy * 0.02 * TILT);
-    g.stroke();
-  }
-  if (this.muzzle) {
-    g.fillStyle = '#fff3c4';
-    g.beginPath(); g.arc(this.muzzle.x, this.muzzle.y * TILT - 20, 16, 0, TAU); g.fill();
-  }
+  const warm = this.lightSprite('255,190,90');
+  const cool = this.lightSprite('143,216,255');
+  const blit = (img, x, y, rad, a) => {
+    ctx.globalAlpha = a;
+    ctx.drawImage(img, x - rad, y - rad, rad * 2, rad * 2);
+  };
+
+  for (const b of this.bullets) blit(b.color === '#8fd8ff' ? cool : warm, b.x, b.y * TILT - b.z, 9, 0.5);
+  if (this.muzzle) blit(warm, this.muzzle.x, this.muzzle.y * TILT - 20, 26, 0.9);
   for (const n of this.nodes) {
     if (n.level > 0 && !n.lock) {
       const meta = Assets.towerMeta(n.level);
       const hh = meta ? (meta.anchorY - meta.deckY) * meta.h * TOWER_SCALE / Assets.manifest.ss : 30 + n.level * 3;
-      g.fillStyle = '#8fd8ff';
-      g.beginPath(); g.arc(n.x, n.y * TILT - hh - 8, 7 + (n.recoil || 0) * 8, 0, TAU); g.fill();
+      blit(cool, n.x, n.y * TILT - hh - 8, 14 + (n.recoil || 0) * 10, 0.55 + (n.recoil || 0) * 0.4);
     }
   }
-  if (this.boss && this.boss.alive) {
-    const b = this.boss;
-    g.fillStyle = '#7ff4ff';
-    g.beginPath(); g.arc(b.x, b.y * TILT - b.radius * 2.1, 10, 0, TAU); g.fill();
-  }
-  for (const m of this.ambient) {
-    if (m.kind !== 'embers') continue;
-    g.fillStyle = 'rgba(255,170,70,0.9)';
-    g.fillRect(m.x - 3, m.y * TILT - m.z - 3, 6, 6);
-  }
-  for (const t of this.torches) {
-    g.fillStyle = 'rgba(255,160,50,0.95)';
-    g.beginPath(); g.ellipse(t.x, t.y * TILT - 62, 11 * t.flicker, 16 * t.flicker, 0, 0, TAU); g.fill();
+  if (this.boss && this.boss.alive) blit(cool, this.boss.x, this.boss.y * TILT - this.boss.radius * 2.1, 22, 0.7);
+  for (const t of this.torches) blit(warm, t.x, t.y * TILT - 62, 26 * t.flicker, 0.85);
+  if (this.quality === 'high') {
+    for (const m of this.ambient) if (m.kind === 'embers') blit(warm, m.x, m.y * TILT - m.z, 6, 0.6);
   }
   for (const ring of this.rings) {
-    g.strokeStyle = `rgba(${ring.color},${clamp(ring.life / ring.maxLife, 0, 1)})`;
-    g.lineWidth = 14;
     const t = 1 - clamp(ring.life / ring.maxLife, 0, 1);
     const rad = ring.r + (ring.maxR - ring.r) * (1 - Math.pow(1 - t, 2));
-    g.beginPath(); g.ellipse(ring.x, ring.y * TILT, rad, rad * TILT, 0, 0, TAU); g.stroke();
+    ctx.globalAlpha = (1 - t) * 0.7;
+    ctx.strokeStyle = `rgba(${ring.color},1)`;
+    ctx.lineWidth = 16;
+    ctx.beginPath(); ctx.ellipse(ring.x, ring.y * TILT, rad, rad * TILT, 0, 0, TAU); ctx.stroke();
   }
-
-  ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.globalAlpha = 0.75;
-  ctx.filter = 'blur(6px)';
-  ctx.drawImage(c, 0, 0, w, h);
-  ctx.filter = 'none';
   ctx.restore();
 };
 

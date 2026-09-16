@@ -329,3 +329,126 @@ input[type="range"] {
 }
 
 .back { margin-top: 20px; }
+
+/* ------------------------------------------------------------------- XP */
+
+.xp-bar {
+  position: relative;
+  width: min(260px, 42vw);
+  height: 13px;
+  margin-top: 6px;
+  border: 2px solid rgba(238, 243, 226, 0.3);
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#xp-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(180deg, #8fd8ff, #3d7fd0);
+  transition: width 0.12s linear;
+}
+
+.xp-bar span {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: #eef3e2;
+}
+
+/* --------------------------------------------------------- Stage select */
+
+.stage-list { display: grid; gap: 12px; margin-bottom: 8px; }
+
+.stage {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 16px 18px;
+  margin: 0;
+  border: 2px solid rgba(238, 243, 226, 0.28);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--mono);
+  color: #eef3e2;
+}
+
+.stage:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+
+.stage:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.stage b { display: block; font-size: 16px; letter-spacing: 0.08em; margin-bottom: 5px; }
+
+.stage i {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #b9c3a8;
+}
+
+.stage .tag {
+  display: inline-block;
+  margin-top: 9px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: rgba(255, 211, 77, 0.16);
+  color: var(--gold);
+}
+
+.stage .tag.locked { background: rgba(255, 255, 255, 0.08); color: #8b9678; }
+.stage .tag.cleared { background: rgba(123, 240, 166, 0.16); color: #7bf0a6; }
+
+/* ------------------------------------------------------------ Perk draft */
+
+.levelup-panel { max-width: 720px; width: min(720px, 100%); }
+
+.perk-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+}
+
+.perk {
+  padding: 18px 16px;
+  margin: 0;
+  border: 2px solid rgba(143, 216, 255, 0.4);
+  background: rgba(143, 216, 255, 0.08);
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: var(--mono);
+  color: #eef3e2;
+  text-align: center;
+  transition: transform 0.1s ease, background 0.15s ease;
+}
+
+.perk:hover { background: rgba(143, 216, 255, 0.2); transform: translateY(-3px); }
+
+.perk b {
+  display: block;
+  font-size: 14px;
+  letter-spacing: 0.07em;
+  color: var(--blue);
+  margin-bottom: 8px;
+}
+
+.perk i {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.55;
+  color: #d6dfc7;
+}
+
+.perk .stacks {
+  display: block;
+  margin-top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #8b9678;
+}

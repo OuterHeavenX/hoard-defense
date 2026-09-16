@@ -9,6 +9,51 @@ const ENEMY_TYPES = {
   brute: { hp: 150, speed: 28,  radius: 26, damage: 22, coins: 9, value: 12, color: '#c8496a', dark: '#7d2340' }
 };
 
+const BOSS_TYPES = {
+  matriarch: {
+    name: 'THE MATRIARCH',
+    hp: 5200, speed: 34, radius: 66, damage: 30,
+    color: '#c8496a', dark: '#6d1c37', skin: '#e79ab0',
+    attack: 'slam', attackInterval: 4.2, coins: 40, value: 14
+  },
+  foreman: {
+    name: 'THE FOREMAN',
+    hp: 4400, speed: 52, radius: 56, damage: 26,
+    color: '#d98032', dark: '#7a3d10', skin: '#f0b97a',
+    attack: 'charge', attackInterval: 3.4, coins: 36, value: 14
+  }
+};
+
+/* The stage climax. Shares enough shape with Enemy that bullets, the spatial
+   grid and the depth sort treat it like any other body. */
+class Boss {
+  constructor(type, x, y, hpScale) {
+    const d = BOSS_TYPES[type];
+    this.kind = 'enemy';
+    this.type = 'boss';
+    this.bossType = type;
+    this.def = d;
+    this.name = d.name;
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.radius = d.radius;
+    this.maxHp = Math.round(d.hp * hpScale);
+    this.hp = this.maxHp;
+    this.speed = d.speed;
+    this.damage = d.damage;
+    this.touchTimer = 0;
+    this.flash = 0;
+    this.wobble = 0;
+    this.scale = 1;
+    this.anim = 0;
+    this.flip = false;
+    this.alive = true;
+    this.attackTimer = d.attackInterval;
+    this.charging = 0;
+    this.telegraph = 0;
+  }
+}
+
 class Player {
   constructor(x, y) {
     this.kind = 'player';
@@ -27,9 +72,12 @@ class Player {
     this.damage = 6;
     this.range = 340;
     this.pierce = 3;
+    this.shots = 1;
+    this.magnetRadius = 110;
     this.target = null;
     this.dashTimer = 0;
     this.dashCooldown = 0;
+    this.dashCooldownMax = 2.4;
     this.invuln = 0;
     this.hurtFlash = 0;
   }

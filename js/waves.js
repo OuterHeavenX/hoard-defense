@@ -5,7 +5,8 @@
 const STAGE_DURATION = 300;
 
 class WaveDirector {
-  constructor() {
+  constructor(arena) {
+    this.arena = arena || ARENAS[0];
     this.elapsed = 0;
     this.lanes = [];
     this.laneTimer = 0;
@@ -26,12 +27,12 @@ class WaveDirector {
     if (t < 40) return r < 0.9 ? 'grunt' : 'runner';
     if (t < 95) return r < 0.66 ? 'grunt' : 'runner';
     if (t < 170) return r < 0.5 ? 'grunt' : r < 0.82 ? 'runner' : 'tank';
-    return r < 0.42 ? 'grunt' : r < 0.72 ? 'runner' : r < 0.97 ? 'tank' : 'brute';
+    return r < 0.42 ? 'grunt' : r < 0.72 ? 'runner' : 'tank';
   }
 
-  /* Baseline spawns per second. */
+  /* Baseline spawns per second, defined per arena. */
   rate() {
-    return 14 + this.progress * 62;
+    return this.arena.spawnRate(this.progress);
   }
 
   /* A handful of edge points that persist for a few seconds each. Feeding the
@@ -63,7 +64,7 @@ class WaveDirector {
       this.nextSurge = this.elapsed + lerp(30, 19, this.progress);
     }
 
-    if (!this.finaleFired && this.elapsed >= STAGE_DURATION - 32) {
+    if (!this.finaleFired && this.elapsed >= STAGE_DURATION - 70) {
       this.finaleFired = true;
       game.announce('FINAL ASSAULT', '#ff7a6b');
       for (let side = 0; side < 4; side++) game.spawnCluster(this.rollType(), 90, side);

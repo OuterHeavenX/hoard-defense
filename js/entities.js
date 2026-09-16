@@ -16,6 +16,12 @@ const BOSS_TYPES = {
     color: '#c8496a', dark: '#6d1c37', skin: '#e79ab0',
     attack: 'slam', attackInterval: 4.2, coins: 40, value: 14
   },
+  warden: {
+    name: 'THE WARDEN',
+    hp: 6400, speed: 40, radius: 62, damage: 34,
+    color: '#5f6f8f', dark: '#26304a', skin: '#b8c4de',
+    attack: 'slam', attackInterval: 3.6, coins: 48, value: 16
+  },
   foreman: {
     name: 'THE FOREMAN',
     hp: 4400, speed: 52, radius: 56, damage: 26,
@@ -52,6 +58,40 @@ class Boss {
     this.charging = 0;
     this.telegraph = 0;
   }
+}
+
+/* The Juggernaut: a walking gun emplacement that follows the player.
+   Expensive to unlock and never truly lost - when his health runs out he
+   goes down for a spell and gets back up, because a purchase that size
+   should not evaporate to one bad pocket. */
+class Ally {
+  constructor(x, y) {
+    this.kind = 'ally';
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.radius = 24;
+    this.maxHp = 700;
+    this.hp = this.maxHp;
+    this.speed = 222;
+    this.range = 460;
+    this.fireInterval = 0.045;
+    this.fireTimer = 0;
+    this.damage = 5;
+    this.spin = 0;              // gatling spin-up, 0..spinUp
+    this.spinUp = 0.55;
+    this.target = null;
+    this.facing = -Math.PI / 2;
+    this.anim = 0;
+    this.flip = false;
+    this.caged = false;         // on The Ascent, until the player reaches him
+    this.downTimer = 0;         // >0 while knocked out
+    this.downFor = 16;
+    this.hurtTimer = 0;
+    this.firing = false;
+  }
+
+  get down() { return this.downTimer > 0; }
+  get active() { return !this.caged && !this.down; }
 }
 
 class Player {
@@ -131,6 +171,7 @@ class Enemy {
     this.scale = rand(0.88, 1.16);
     this.anim = rand(0, WALK_FRAMES);
     this.flip = Math.random() < 0.5;
+    this.z = 0;             // >0 while stepping down off a staircase
     this.alive = true;
     return this;
   }
@@ -196,9 +237,12 @@ class DefenseNode {
   static COSTS = [35, 80, 150, 260, 420];
   static MAX_LEVEL = DefenseNode.COSTS.length;
 
-  constructor(x, y) {
+  constructor(x, y, opts = {}) {
     this.kind = 'node';
     this.x = x; this.y = y;
+    this.costs = opts.costs || DefenseNode.COSTS;
+    this.maxLevel = opts.maxLevel || DefenseNode.MAX_LEVEL;
+    this.lock = !!opts.lock;    // the Juggernaut's cage: pays out a rescue, not a turret
     this.radius = 26;
     this.padRadius = 82;
     this.level = 0;
@@ -210,8 +254,8 @@ class DefenseNode {
     this.recentFeed = 0;
   }
 
-  get maxed() { return this.level >= DefenseNode.MAX_LEVEL; }
-  get nextCost() { return this.maxed ? 0 : DefenseNode.COSTS[this.level]; }
+  get maxed() { return this.level >= this.maxLevel; }
+  get nextCost() { return this.maxed ? 0 : this.costs[this.level]; }
 
   get stats() {
     const l = this.level;

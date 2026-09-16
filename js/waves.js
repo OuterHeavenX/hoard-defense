@@ -39,6 +39,17 @@ class WaveDirector {
      trickle through them turns a random sprinkle into thick marching columns,
      which is what makes the crowd read as a hoard rather than as confetti. */
   updateLanes(dt, game) {
+    // On the gauntlet the lanes are the stairs near the player: the ones
+    // ahead pour down toward you, the one behind keeps you honest.
+    if (this.arena.mode === 'gauntlet') {
+      const py = game.player.y;
+      const near = this.arena.stairs
+        .filter((s) => s.y < py + 260 && s.y > py - 1050)
+        .sort((a, b) => Math.abs(a.y - py) - Math.abs(b.y - py))
+        .slice(0, 3);
+      this.stairLanes = near.length ? near : this.arena.stairs.slice(-2);
+      return;
+    }
     this.laneTimer -= dt;
     const want = 2 + Math.round(this.progress * 2);
     if (this.laneTimer <= 0 || this.lanes.length !== want) {
@@ -55,6 +66,10 @@ class WaveDirector {
     this.spawnCredit += this.rate() * dt;
     while (this.spawnCredit >= 1) {
       this.spawnCredit -= 1;
+      if (this.arena.mode === 'gauntlet') {
+        game.spawnAtStair(this.rollType(), pick(this.stairLanes));
+        continue;
+      }
       const lane = pick(this.lanes);
       game.spawnEnemy(this.rollType(), lane.x + rand(-55, 55), lane.y + rand(-55, 55));
     }
@@ -64,7 +79,7 @@ class WaveDirector {
       this.nextSurge = this.elapsed + lerp(30, 19, this.progress);
     }
 
-    if (!this.finaleFired && this.elapsed >= STAGE_DURATION - 70) {
+    if (!this.finaleFired && this.elapsed >= STAGE_DURATION - 70 && this.arena.mode !== 'gauntlet') {
       this.finaleFired = true;
       game.announce('FINAL ASSAULT', '#ff7a6b');
       for (let side = 0; side < 4; side++) game.spawnCluster(this.rollType(), 90, side);

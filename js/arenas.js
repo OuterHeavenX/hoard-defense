@@ -37,6 +37,33 @@ const ARENAS = [
     spawnRate: (p) => 20 + p * 80,
     surgeSize: (p) => lerp(75, 260, p),
     boss: 'foreman'
+  },
+  {
+    id: 'ascent',
+    name: 'THE ASCENT',
+    blurb: 'A climb, not a hold. They pour down the stairs; the Juggernaut waits caged at the top.',
+    width: 1000,
+    height: 3400,
+    mode: 'gauntlet',
+    ground: { base: '#262a2e', fleck: [[52, 74], [56, 78], [62, 86]] },
+    border: 'rgba(170,190,220,0.45)',
+    // Offsets from centre (500, 1700): a node every ~600 up the corridor.
+    nodes: [
+      [-230, 1250], [230, 700], [-230, 150], [230, -400], [-230, -950]
+    ],
+    // Enemy sources. Alternating walls, denser toward the top.
+    stairs: [
+      { side: 'left', y: 3120 }, { side: 'right', y: 2700 },
+      { side: 'left', y: 2280 }, { side: 'right', y: 1880 },
+      { side: 'left', y: 1480 }, { side: 'right', y: 1120 },
+      { side: 'left', y: 760 },  { side: 'right', y: 480 },
+      { side: 'left', y: 260 },  { side: 'right', y: 260 }
+    ],
+    ally: { x: 500, y: 150 },
+    playerStart: { x: 500, y: 3230 },
+    spawnRate: (p) => 15 + p * 50,
+    surgeSize: (p) => lerp(45, 170, p),
+    boss: 'warden'
   }
 ];
 

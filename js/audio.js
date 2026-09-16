@@ -137,6 +137,12 @@ class Audio {
     this.tone({ freq: 380, sweepTo: 150, dur: 0.08, gain: 0.045, type: 'sawtooth' });
   }
 
+  gatling() {
+    if (!this.ready('gatling', 0.05)) return;
+    this.noise({ freq: 1400, sweepTo: 500, dur: 0.05, gain: 0.06, q: 1.2 });
+    this.tone({ freq: 300, sweepTo: 140, dur: 0.045, gain: 0.03, type: 'square' });
+  }
+
   hit() {
     if (!this.ready('hit', 0.045)) return;
     this.noise({ freq: 2200, sweepTo: 900, dur: 0.045, gain: 0.05, q: 1.4 });

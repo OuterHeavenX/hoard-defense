@@ -34,6 +34,7 @@ Game.prototype.draw = function () {
   ctx.translate(-camX, -camPY);
 
   this.drawGround(ctx);
+  this.drawStairs(ctx);
   this.drawDecals(ctx);
   this.drawNodePads(ctx);
   this.drawShadows(ctx, camX, camPY, w, h);
@@ -133,6 +134,11 @@ Game.prototype.drawShadows = function (ctx, camX, camPY, w, h) {
     const p = this.player;
     ctx.moveTo(p.x + p.radius, p.y * TILT);
     ctx.ellipse(p.x, p.y * TILT, p.radius, p.radius * 0.42, 0, 0, TAU);
+    const a = this.ally;
+    if (a) {
+      ctx.moveTo(a.x + a.radius * 1.2, a.y * TILT);
+      ctx.ellipse(a.x, a.y * TILT, a.radius * 1.2, a.radius * 0.5, 0, 0, TAU);
+    }
   }
   ctx.fill();
 };
@@ -159,6 +165,7 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
   for (const node of this.nodes) put(node);
   for (let i = 0; i < this.coins.length; i++) put(this.coins[i]);
   if (!this.attract) put(this.player);
+  if (this.ally && !this.attract) put(this.ally);
 
   for (let r = 0; r < ROW_COUNT; r++) {
     const row = rows[r];
@@ -169,6 +176,7 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
         case 'node':  this.drawTurret(ctx, item); break;
         case 'coin':  this.drawCoin(ctx, item); break;
         case 'player': this.drawPlayer(ctx, item); break;
+        case 'ally': this.drawAlly(ctx, item); break;
       }
     }
   }
@@ -179,7 +187,7 @@ Game.prototype.drawEnemy = function (ctx, e) {
   const frame = characterFrame(e.type, e.anim | 0, e.flip, e.flash > 0.35);
   const k = e.scale;
   const fw = frame.w * k, fh = frame.h * k;
-  const py = e.y * TILT;
+  const py = e.y * TILT - e.z;
   ctx.drawImage(frame.canvas, e.x - fw / 2, py - fh, fw, fh);
 
   if (e.type === 'brute') {
@@ -264,6 +272,128 @@ Game.prototype.drawBoss = function (ctx, b) {
   }
 };
 
+/* Staircases cut into the corridor walls, descending from a dark doorway
+   to the floor. They live inside the corridor, not beyond it: at desktop
+   zoom the view is barely wider than the walls, so anything drawn outside
+   them is never seen. */
+const STAIR_STEPS = 5, STAIR_TREAD = 58, STAIR_RISE = 13, STAIR_DEPTH = 30;
+const STAIR_LENGTH = STAIR_STEPS * STAIR_TREAD;
+
+Game.prototype.drawWalls = function (ctx) {
+  if (!this.arena.stairs) return;
+  const band = 44;
+  ctx.fillStyle = '#1a1d22';
+  ctx.fillRect(-band, -band * TILT, band, WORLD_H * TILT + band * TILT * 2);
+  ctx.fillRect(WORLD_W, -band * TILT, band, WORLD_H * TILT + band * TILT * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(-band, -band * TILT, 6, WORLD_H * TILT + band * TILT * 2);
+  ctx.fillRect(WORLD_W + band - 6, -band * TILT, 6, WORLD_H * TILT + band * TILT * 2);
+};
+
+Game.prototype.drawStairs = function (ctx) {
+  const stairs = this.arena.stairs;
+  if (!stairs) return;
+  this.drawWalls(ctx);
+  for (const s of stairs) {
+    const left = s.side === 'left';
+    const baseY = s.y * TILT;
+    // Doorway in the wall, at the top of the flight.
+    const doorH = STAIR_RISE * STAIR_STEPS + 46;
+    const doorX = left ? 0 : WORLD_W - 26;
+    ctx.fillStyle = '#0b0d10';
+    ctx.fillRect(doorX, baseY - doorH - STAIR_DEPTH * TILT, 26, doorH + STAIR_DEPTH * TILT * 2);
+    // Steps, top at the wall, descending into the corridor.
+    for (let i = 0; i < STAIR_STEPS; i++) {
+      const x = left ? 26 + i * STAIR_TREAD : WORLD_W - 26 - (i + 1) * STAIR_TREAD;
+      const z = STAIR_RISE * (STAIR_STEPS - i);
+      const y = baseY - z;
+      ctx.fillStyle = i % 2 ? '#3a4048' : '#444b55';
+      ctx.fillRect(x, y - STAIR_DEPTH * TILT, STAIR_TREAD, STAIR_DEPTH * TILT * 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.10)';
+      ctx.fillRect(x, y - STAIR_DEPTH * TILT, STAIR_TREAD, 3);
+      // Riser face below each tread, so the flight reads as height.
+      ctx.fillStyle = '#23272d';
+      ctx.fillRect(x, y + STAIR_DEPTH * TILT, STAIR_TREAD, STAIR_RISE);
+    }
+  }
+};
+
+Game.prototype.drawAlly = function (ctx, a) {
+  const py = a.y * TILT;
+
+  if (a.caged) {
+    const w = 96, h = 86;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(a.x - w / 2, py - h, w, h);
+  }
+
+  const frame = characterFrame('ally', a.anim | 0, a.flip, a.hurtTimer > 0.15);
+  ctx.globalAlpha = a.down ? 0.55 : 1;
+  ctx.drawImage(frame.canvas, a.x - frame.w / 2, py - frame.h, frame.w, frame.h);
+  ctx.globalAlpha = 1;
+
+  if (!a.down) {
+    // Gatling: three barrels fanned around the aim, rotating while spun up.
+    const chest = py - frame.h * 0.52;
+    const len = 34;
+    const roll = a.spin > 0 ? performance.now() / 40 : 0;
+    ctx.lineCap = 'round';
+    for (let i = 0; i < 3; i++) {
+      const off = Math.sin(roll + i * 2.09) * 3;
+      ctx.strokeStyle = i === 1 ? '#2a2e26' : '#454c40';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(a.x - Math.sin(a.facing) * off, chest + Math.cos(a.facing) * off * TILT);
+      ctx.lineTo(a.x + Math.cos(a.facing) * len - Math.sin(a.facing) * off,
+                 chest + Math.sin(a.facing) * len * TILT + Math.cos(a.facing) * off * TILT);
+      ctx.stroke();
+    }
+    if (a.firing) {
+      ctx.fillStyle = '#fff0b8';
+      ctx.beginPath();
+      ctx.arc(a.x + Math.cos(a.facing) * (len + 6), chest + Math.sin(a.facing) * (len + 6) * TILT,
+              5 + Math.random() * 4, 0, TAU);
+      ctx.fill();
+    }
+  }
+
+  if (a.caged) {
+    const w = 96, h = 86;
+    ctx.strokeStyle = '#8b96a8';
+    ctx.lineWidth = 4;
+    for (let i = 0; i <= 6; i++) {
+      const x = a.x - w / 2 + (w / 6) * i;
+      ctx.beginPath();
+      ctx.moveTo(x, py - h);
+      ctx.lineTo(x, py + 6);
+      ctx.stroke();
+    }
+    ctx.strokeRect(a.x - w / 2, py - h, w, h + 6);
+    const lock = this.lockNode;
+    const left = lock ? Math.ceil(lock.nextCost - lock.invested) : 0;
+    ctx.fillStyle = 'rgba(255,233,168,0.85)';
+    ctx.font = 'bold 14px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE JUGGERNAUT', a.x, py - h - 24);
+    ctx.fillText('LOCK  ' + left + 'g', a.x, py - h - 8);
+    return;
+  }
+
+  // Health bar, and a countdown while down.
+  const barW = 54;
+  const top = py - frame.h - 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(a.x - barW / 2, top, barW, 5);
+  ctx.fillStyle = a.down ? '#8b9678' : '#8a9a6b';
+  ctx.fillRect(a.x - barW / 2, top, barW * clamp(a.hp / a.maxHp, 0, 1), 5);
+  if (a.down) {
+    ctx.fillStyle = '#ffe9a8';
+    ctx.font = 'bold 13px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('DOWN ' + Math.ceil(a.downTimer), a.x, top - 6);
+  }
+};
+
 Game.prototype.drawPlayer = function (ctx, p) {
   const py = p.y * TILT;
 
@@ -297,6 +427,7 @@ Game.prototype.drawPlayer = function (ctx, p) {
 };
 
 Game.prototype.drawTurret = function (ctx, node) {
+  if (node.lock) return this.drawLock(ctx, node);
   const py = node.y * TILT;
   const lit = node.level > 0;
   const height = 30 + node.level * 3;
@@ -350,6 +481,26 @@ Game.prototype.drawTurret = function (ctx, node) {
       : this.player.gold >= 1 ? 'DEPOSITING  ' + Math.ceil(node.nextCost - node.invested) + 'g LEFT'
       : 'NEEDS ' + Math.ceil(node.nextCost - node.invested) + 'g';
     ctx.fillText(label, node.x, py - height - 34);
+  }
+};
+
+/* The cage lock: a plate on the floor in front of the bars. */
+Game.prototype.drawLock = function (ctx, node) {
+  const py = node.y * TILT;
+  ctx.fillStyle = node.maxed ? '#5a6472' : '#4a4a42';
+  ctx.beginPath();
+  ctx.ellipse(node.x, py, 20, 20 * TILT, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = node.maxed ? '#7bf0a6' : '#ffd34d';
+  ctx.beginPath();
+  ctx.ellipse(node.x, py, 9, 9 * TILT, 0, 0, TAU);
+  ctx.fill();
+  if (this.activeNode === node && !node.maxed) {
+    ctx.fillStyle = '#ffe9a8';
+    ctx.font = 'bold 15px ui-monospace, monospace';
+    ctx.textAlign = 'center';
+    const left = Math.ceil(node.nextCost - node.invested);
+    ctx.fillText(this.player.gold >= 1 ? 'BREAKING LOCK  ' + left + 'g LEFT' : 'LOCK NEEDS ' + left + 'g', node.x, py - 30);
   }
 };
 
@@ -518,18 +669,24 @@ Game.prototype.drawBanner = function (ctx, w, h) {
 
 Game.prototype.drawMinimap = function (ctx, w, h) {
   if (this.attract) return;
-  const size = 150;
+  const box = 150;
   const pad = 16;
-  const mh = size * (WORLD_H / WORLD_W);
+  const k = box / Math.max(WORLD_W, WORLD_H);
+  const size = WORLD_W * k, mh = WORLD_H * k;
   const x = w - size - pad;
   const y = h - mh - pad;
-  const sx = size / WORLD_W, sy = mh / WORLD_H;
+  const sx = k, sy = k;
 
   ctx.fillStyle = 'rgba(10,12,8,0.65)';
   ctx.fillRect(x, y, size, mh);
   ctx.strokeStyle = 'rgba(210,225,180,0.4)';
   ctx.lineWidth = 1;
   ctx.strokeRect(x + 0.5, y + 0.5, size - 1, mh - 1);
+
+  if (this.ally) {
+    ctx.fillStyle = '#ffd34d';
+    ctx.fillRect(x + this.ally.x * sx - 3, y + this.ally.y * sy - 3, 6, 6);
+  }
 
   ctx.fillStyle = '#c8496a';
   const list = this.enemies;

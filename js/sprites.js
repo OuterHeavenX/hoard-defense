@@ -128,7 +128,8 @@ function buildCharacterSprites() {
     runner: { width: 19, height: 29, color: '#d2703f', dark: '#8a4220', skin: '#e8a271', pose: 'run' },
     tank:   { width: 27, height: 40, color: '#6f7fae', dark: '#3d4a72', skin: '#9fadd4', pose: 'heavy' },
     brute:  { width: 56, height: 78, color: '#c8496a', dark: '#7d2340', skin: '#e79ab0', pose: 'heavy', hat: true },
-    player: { width: 24, height: 36, color: '#2ad4c8', dark: '#0f3b42', skin: '#eafdff', pose: 'run', hat: true }
+    player: { width: 24, height: 36, color: '#2ad4c8', dark: '#0f3b42', skin: '#eafdff', pose: 'run', hat: true },
+    ally:   { width: 40, height: 60, color: '#8a9a6b', dark: '#2f3a2a', skin: '#d9c9a8', pose: 'heavy', hat: true }
   };
 
   for (const type in looks) {

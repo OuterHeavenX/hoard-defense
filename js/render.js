@@ -562,24 +562,49 @@ Game.prototype.drawPlayer = function (ctx, p) {
   }
 };
 
+/* Whether this node is drawing one of the arena's family towers, which come
+   with their own modelled weapon, rather than a plain lamp-topped turret. */
+Game.prototype.towerIsArmed = function (node) {
+  const family = this.arena.towers;
+  const set = family && Assets.towerPacks[family];
+  return !!(set && set.levels[node.level]);
+};
+
+/* How far above the floor a node's weapon sits, in drawn pixels. The turret
+   and the glow pass both need it and must agree, or the muzzle flash floats
+   away from the gun it belongs to. */
+Game.prototype.deckHeight = function (node) {
+  const family = this.arena.towers;
+  const meta = Assets.towerMeta(node.level, family);
+  if (!meta || !Assets.tower(node.level, family)) return 30 + node.level * 3;
+  return (meta.anchorY - meta.deckY) * meta.h * TOWER_SCALE / Assets.towerScale(node.level, family);
+};
+
 Game.prototype.drawTurret = function (ctx, node) {
   if (node.lock) return this.drawLock(ctx, node);
   const py = node.y * TILT;
   const lit = node.level > 0;
   let height = 30 + node.level * 3;
 
-  const sprite = Assets.tower(node.level);
-  const meta = Assets.towerMeta(node.level);
+  // Each arena has its own tower family, so the defence you build belongs to
+  // the place you are defending. Families only cover the built tiers; the
+  // bare foundation is the same everywhere.
+  const family = this.arena.towers;
+  const sprite = Assets.tower(node.level, family);
+  const meta = Assets.towerMeta(node.level, family);
+  // A family tower carries its own modelled weapon, so the procedural barrels
+  // and lamp are left off - drawn on top they read as a second gun.
+  const armed = !!(sprite && meta) && this.towerIsArmed(node);
   if (sprite && meta) {
     // Rendered tower, with the image's ground origin on the node and the gun
     // mounted on the walkway deck. Drawn at 75% of native scale: at full
     // size a tier-5 tower overran the pad above it on the Dust Bowl's ring.
-    const k = TOWER_SCALE / Assets.manifest.ss;
+    const k = TOWER_SCALE / Assets.towerScale(node.level, family);
     const w = meta.w * k, h = meta.h * k;
     const top = py - meta.anchorY * h;
     // The render is cut out on transparency, so it lost its ground shadow;
     // a soft ellipse trailing the sun anchors it to the floor.
-    const br = meta.baseR * Assets.manifest.unitPx * TOWER_SCALE;
+    const br = meta.baseR * Assets.towerUnitPx(node.level, family) * TOWER_SCALE;
     ctx.fillStyle = 'rgba(0,0,0,0.38)';
     ctx.beginPath();
     ctx.ellipse(node.x + br * 0.35, py + 2, br * 1.25, br * 0.55, 0, 0, TAU);
@@ -603,7 +628,7 @@ Game.prototype.drawTurret = function (ctx, node) {
     ctx.fill();
   }
 
-  if (lit && sprite) {
+  if (lit && sprite && !armed) {
     ctx.fillStyle = '#2b3138';
     ctx.beginPath();
     ctx.ellipse(node.x, py - height - 4, 9, 9 * TILT, 0, 0, TAU);
@@ -614,7 +639,23 @@ Game.prototype.drawTurret = function (ctx, node) {
     ctx.fill();
   }
 
-  if (lit) {
+  if (lit && armed) {
+    // The model's own weapon does the aiming, so all that is left to draw is
+    // the shot leaving it: a flash on the firing side of the deck.
+    const r = node.recoil || 0;
+    if (r > 0.25) {
+      const mx = node.x + Math.cos(node.angle) * node.radius * 0.7;
+      const my = py - height - 4 + Math.sin(node.angle) * node.radius * 0.7 * TILT;
+      ctx.fillStyle = 'rgba(255,238,190,' + (0.22 + r * 0.5).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(mx, my, 5 + r * 7, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,' + (r * 0.55).toFixed(3) + ')';
+      ctx.beginPath();
+      ctx.arc(mx, my, 2 + r * 3, 0, TAU);
+      ctx.fill();
+    }
+  } else if (lit) {
     const st = node.stats;
     ctx.strokeStyle = '#3d4550';
     ctx.lineWidth = 6;
@@ -891,7 +932,13 @@ Game.prototype.collectLights = function (out) {
   if (!this.attract) out.push({ x: p.x, y: p.y * TILT - 18, r: 260, a: 1.0, warm: true });
   if (this.ally && this.ally.active) out.push({ x: this.ally.x, y: this.ally.y * TILT - 30, r: 200, a: 0.8, warm: true });
   for (const n of this.nodes) {
-    if (n.level > 0 && !n.lock) out.push({ x: n.x, y: n.y * TILT - 40, r: 150 + (n.recoil || 0) * 90, a: 0.55 + (n.recoil || 0) * 0.5 });
+    if (n.level <= 0 || n.lock) continue;
+    // A plain tower carries a lamp and glows on its own. A family tower has a
+    // modelled weapon and no lamp, so it only lights the ground when it fires.
+    const armed = this.towerIsArmed(n);
+    const kick = n.recoil || 0;
+    out.push({ x: n.x, y: n.y * TILT - 40, r: 150 + kick * 90,
+               a: armed ? 0.14 + kick * 0.62 : 0.55 + kick * 0.5, warm: armed });
   }
   if (this.muzzle) out.push({ x: this.muzzle.x, y: this.muzzle.y * TILT - 20, r: 140, a: 1.0, warm: true });
   for (const t of this.torches) out.push({ x: t.x, y: t.y * TILT - 52, r: 230 * t.flicker, a: 0.9, warm: true });
@@ -951,9 +998,10 @@ Game.prototype.drawGlow = function (ctx, camX, camPY, w, h, zoom) {
   if (this.muzzle) blit(warm, this.muzzle.x, this.muzzle.y * TILT - 20, 26, 0.9);
   for (const n of this.nodes) {
     if (n.level > 0 && !n.lock) {
-      const meta = Assets.towerMeta(n.level);
-      const hh = meta ? (meta.anchorY - meta.deckY) * meta.h * TOWER_SCALE / Assets.manifest.ss : 30 + n.level * 3;
-      blit(cool, n.x, n.y * TILT - hh - 8, 14 + (n.recoil || 0) * 10, 0.55 + (n.recoil || 0) * 0.4);
+      const hh = this.deckHeight(n);
+      const kick = n.recoil || 0;
+      if (this.towerIsArmed(n)) blit(warm, n.x, n.y * TILT - hh - 2, 10 + kick * 16, kick * 0.85);
+      else blit(cool, n.x, n.y * TILT - hh - 8, 14 + kick * 10, 0.55 + kick * 0.4);
     }
   }
   if (this.boss && this.boss.alive) blit(cool, this.boss.x, this.boss.y * TILT - this.boss.radius * 2.1, 22, 0.7);

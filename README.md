@@ -70,8 +70,9 @@ are carrying enough gold to finish the next tier.
 
 ```
 index.html        ready to play, no build step
-assets/           Blender-rendered towers and floor tiles, plus their manifest
-tools/            render_assets.py - the Blender scene, shaders and camera
+assets/           Blender-rendered towers, floor tiles and golem frames, plus manifests
+models/           golem.blend - the rigged, animated boss
+tools/            render_assets.py and build_golem.py - the Blender scenes
 css/style.css     HUD, menus, overlays
 js/utils.js       math, formatting, the TILT projection constant
 js/assets.js      loads the rendered art, with procedural fallbacks
@@ -139,12 +140,33 @@ as the 0.58 ellipse the node pads already use — so a tower's round top sits fl
 pad with no fudging in the renderer. Each sprite carries its ground origin and walkway
 deck in `assets/manifest.js`, and the game mounts the gun on the deck from that.
 
+### The golem
+
+Every boss is the stone golem: a segmented creature of loose rock blocks with moss on
+the upward faces and lit eyes, modelled, rigged and animated in `tools/build_golem.py`
+and saved to `models/golem.blend` — open it in Blender and the skeleton, the walk cycle
+and the slam are all there in Pose Mode.
+
+The rig is honest about what a golem is. Each of the 26 blocks is bound rigidly to one
+of 19 bones (every vertex weighted 1.0 to that bone), so the pieces move with the
+skeleton but never stretch — which is how the references look. The walk cycle is 24
+frames with legs and arms in counter-swing, a bob on each footfall and a twist against
+the stride; the slam is a wind-up with both fists overhead and the torso back, then the
+strike driven down in front. Eight walk frames and four slam frames are rendered from
+the game camera, and the three bosses are colourways of the one render — a light hue
+wash that keeps the grey and the moss and just leans them.
+
+The camera frame is fitted to the evaluated geometry across every rendered pose rather
+than guessed, because guessing clipped the raised fists straight off the wind-up. The
+bone rotation convention was measured with diagnostic renders, not assumed.
+
 To re-render after changing the models or shaders:
 
 ```
 pip install bpy          # Blender as a Python module, no GUI needed
 python3 tools/render_assets.py           # everything
 python3 tools/render_assets.py towers    # or just the towers / ground
+python3 tools/build_golem.py             # rebuild, re-rig and re-render the golem
 ```
 
 Each tower takes about a second on CPU. The manifest is written as JavaScript rather

@@ -5,8 +5,13 @@ and six gold-hungry defense nodes. Enemies die in a hit or two, but they never s
 coming — the only way to keep up is to hoover up the gold they drop and pour it into
 the nodes ringing the arena.
 
-**[Play it here](https://outerheavenx.github.io/hoard-defense/)** — or clone the repo
-and open `index.html`. No build step, no server, no dependencies.
+**To play:** clone the repo and open `index.html` — no build step, no server, no
+dependencies.
+
+To put it online, enable GitHub Pages under *Settings → Pages* with the source set to
+this branch and the `/ (root)` folder; it will then be served at
+`https://outerheavenx.github.io/hoard-defense/`. A `.nojekyll` file is already included
+so Pages serves the `js/` and `css/` folders untouched.
 
 ## The loop
 

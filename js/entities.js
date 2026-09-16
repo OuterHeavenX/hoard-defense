@@ -11,6 +11,7 @@ const ENEMY_TYPES = {
 
 class Player {
   constructor(x, y) {
+    this.kind = 'player';
     this.x = x; this.y = y;
     this.vx = 0; this.vy = 0;
     this.radius = 13;
@@ -19,6 +20,8 @@ class Player {
     this.hp = this.maxHp;
     this.gold = 0;
     this.facing = -Math.PI / 2;
+    this.anim = 0;
+    this.flip = false;
     this.fireInterval = 0.12;
     this.fireTimer = 0;
     this.damage = 6;
@@ -64,6 +67,7 @@ class Enemy {
 
   reset(type, x, y, hpScale) {
     const t = ENEMY_TYPES[type];
+    this.kind = 'enemy';
     this.type = type;
     this.def = t;
     this.x = x; this.y = y;
@@ -77,6 +81,8 @@ class Enemy {
     this.flash = 0;
     this.wobble = rand(0, TAU);
     this.scale = rand(0.88, 1.16);
+    this.anim = rand(0, WALK_FRAMES);
+    this.flip = Math.random() < 0.5;
     this.alive = true;
     return this;
   }
@@ -87,6 +93,7 @@ class Bullet {
 
   reset(x, y, dx, dy, speed, damage, opts = {}) {
     this.x = x; this.y = y;
+    this.z = opts.z ?? 15;
     this.vx = dx * speed;
     this.vy = dy * speed;
     this.damage = damage;
@@ -105,9 +112,12 @@ class Coin {
   constructor() { this.alive = false; }
 
   reset(x, y, value) {
+    this.kind = 'coin';
     this.x = x; this.y = y;
     this.vx = rand(-70, 70);
     this.vy = rand(-70, 70);
+    this.z = 6;
+    this.vz = rand(40, 110);
     this.value = value;
     this.life = 18;
     this.spin = rand(0, TAU);
@@ -119,8 +129,10 @@ class Coin {
 class Particle {
   constructor() { this.alive = false; }
 
-  reset(x, y, vx, vy, life, color, size) {
+  reset(x, y, vx, vy, life, color, size, z, vz) {
     this.x = x; this.y = y;
+    this.z = z || 0;
+    this.vz = vz || 0;
     this.vx = vx; this.vy = vy;
     this.life = this.maxLife = life;
     this.color = color;
@@ -137,6 +149,7 @@ class DefenseNode {
   static MAX_LEVEL = DefenseNode.COSTS.length;
 
   constructor(x, y) {
+    this.kind = 'node';
     this.x = x; this.y = y;
     this.radius = 26;
     this.padRadius = 82;

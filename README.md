@@ -1,9 +1,9 @@
 # Hoard Defense
 
-A five-minute survival stage: one controllable soldier, thousands of weak enemies,
-and six gold-hungry defense nodes. Enemies die in a hit or two, but they never stop
-coming — the only way to keep up is to hoover up the gold they drop and pour it into
-the nodes ringing the arena.
+A five-minute survival stage rendered in 2.5D: one controllable soldier, thousands of
+weak enemies, and six gold-hungry defense nodes. Enemies die in a hit or two, but they
+never stop coming — the only way to keep up is to hoover up the gold they drop and pour
+it into the nodes ringing the arena.
 
 **To play:** clone the repo and open `index.html` — no build step, no server, no
 dependencies.
@@ -24,6 +24,18 @@ so Pages serves the `js/` and `css/` folders untouched.
 The tension is in step 3: depositing means standing still while a horde closes on you.
 Hoard your gold too long and the turrets never come online; linger on a pad too long
 and you get swarmed.
+
+## Menus
+
+The title screen runs a live attract battle behind it — a real simulation with the
+crowd, turrets and brutes, not a backdrop image. From there:
+
+- **PLAY** — start the stage
+- **HOW TO PLAY** — controls and a short bestiary
+- **SETTINGS** — sound on/off, volume, screen shake on/off (all persisted to
+  `localStorage`, so they survive a reload)
+
+Pausing offers resume, restart and quit to title.
 
 ## Controls
 
@@ -58,30 +70,60 @@ are carrying enough gold to finish the next tier.
 ```
 index.html        ready to play, no build step
 css/style.css     HUD, menus, overlays
-js/utils.js       math and formatting helpers
+js/utils.js       math, formatting, the TILT projection constant
 js/spatial.js     uniform grid for crowd queries
 js/input.js       keyboard + touch stick
+js/audio.js       synthesised sound effects (no audio files)
+js/sprites.js     procedural character sprite baking
 js/entities.js    player, enemies, bullets, coins, nodes
 js/waves.js       the 5 minute wave director
 js/game.js        simulation
-js/render.js      renderer
-js/main.js        canvas sizing, fixed-step loop, UI wiring
+js/render.js      2.5D renderer
+js/main.js        canvas sizing, fixed-step loop, menus, settings
 ```
 
 Plain scripts, no modules, so `file://` works — double-clicking `index.html` is enough.
+
+## How the 2.5D works
+
+The simulation is unchanged and still runs on a flat top-down plane — only drawing is
+projected. Screen Y is `worldY * TILT` minus the body's height, which tilts the ground
+away from the camera and stands characters upright on it. Everything touching the floor
+is then drawn back-to-front so near bodies overlap far ones; with a thousand of them,
+that ordering is what sells the depth.
+
+- **Depth sorting is a bucket sort** by world Y, not a comparison sort, so it stays
+  linear as the crowd grows.
+- **Shadows are one flat pass** before any body is drawn, so a shadow can never land on
+  top of the figure standing in front of it.
+- **The floor is the only thing drawn in squashed space**, so its texture foreshortens
+  with the plane instead of sliding across it.
+
+## Sound
+
+Every cue is synthesised at runtime from oscillators and a shared noise buffer, so the
+repo carries no audio files and nothing has to load. The throttling matters as much as
+the synthesis: a five minute run kills upwards of 14,000 enemies, and one voice per kill
+would both clip the output and tank the frame. Each cue has a minimum interval and a
+global 18-voice cap. Measured under a 6,110-kill storm, voices peak at exactly the cap
+and never exceed it.
+
+Audio only starts after a click, per browser autoplay rules, and battle cues stay muted
+while the title screen's attract loop plays.
 
 ## Performance notes
 
 The stage is built to put ~1000+ bodies on screen at once, which shaped two decisions:
 
-- **The crowd is drawn as sprite blits**, not as batched paths. Each enemy type is baked
-  once into a small offscreen canvas. Drawing hundreds of bodies as one giant path makes
-  a rasterizer scan-convert a screen-sized bounding box per pass.
+- **The crowd is drawn as sprite blits**, not as batched paths. Each character is baked
+  once into a small offscreen canvas at load. Drawing hundreds of bodies as one giant
+  path makes a rasterizer scan-convert a screen-sized bounding box per pass.
 - **Separation is visit-capped.** Each body examines at most 20 neighbours from the
   spatial grid per frame. Without the cap, a dense pile-up degrades toward quadratic;
   with it, the cost per body is fixed and the crowd looks identical.
 
-The simulation measures ~0.3ms/frame at 600 enemies, leaving the frame budget to rendering.
+The simulation measures ~0.2ms per step at 400+ enemies, leaving the frame budget to
+rendering.
 
 ## Tuning
 
@@ -90,5 +132,11 @@ Most of the feel lives in a few constants:
 - `js/game.js` — `WORLD_W/H`, `MAX_ENEMIES`, `DEPOSIT_RATE`, `NEIGHBOUR_VISITS`
 - `js/waves.js` — `STAGE_DURATION`, `rate()`, `rollType()`, surge sizing
 - `js/entities.js` — `ENEMY_TYPES`, `DefenseNode.COSTS`, node `stats`
+- `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
+- `js/sprites.js` — the `looks` table: size, colour and pose per character
+
+The character art is deliberately placeholder. `bakeBiped()` is the only thing that
+draws a figure, so swapping in real sprite sheets means replacing that one function —
+the renderer just asks for a frame and blits it.
 
 `window.__game` is exposed in the console for poking at a live run.

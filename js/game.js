@@ -15,6 +15,8 @@ class Game {
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.hud = hud;
     this.input = new Input(canvas);
+    this.audio = new Audio();
+    this.shakeEnabled = true;
     this.grid = new SpatialGrid(WORLD_W + 400, WORLD_H + 400, 48);
     this.ground = makeGroundPattern(this.ctx);
     this.screen = { w: 960, h: 600 };   // css pixels
@@ -44,6 +46,10 @@ class Game {
     this.camera = { x: this.player.x, y: this.player.y };
     this.timeLeft = STAGE_DURATION;
     this.activeNode = null;
+    // What the crowd walks toward. The player in a real run; the arena
+    // centre while the title screen plays its attract loop.
+    this.focus = { x: this.player.x, y: this.player.y };
+    this.attract = false;
   }
 
   buildNodes() {
@@ -58,12 +64,64 @@ class Game {
 
   start() {
     this.reset();
+    this.audio.suspended = false;
     this.state = 'playing';
     this.announce('HOLD THE LINE', '#8fe8c0');
   }
 
+  /* A self-running battle behind the title screen: pre-built turrets, no
+     player, crowd walking the centre. Never ends, never hurts anybody. */
+  startAttract() {
+    this.reset();
+    this.attract = true;
+    this.audio.suspended = true;
+    this.state = 'menu';
+    this.focus = { x: WORLD_W / 2, y: WORLD_H / 2 };
+    for (const node of this.nodes) node.level = 1 + randInt(0, 1);
+    this.director.elapsed = 120;
+    // Seeded as a ring already closing on the centre: spawning them at the
+    // arena edge would leave the title screen empty for the ~15s it takes
+    // them to walk into frame.
+    const cx = WORLD_W / 2, cy = WORLD_H / 2;
+    for (let i = 0; i < 460; i++) {
+      const a = rand(0, TAU), r = rand(170, 620);
+      this.spawnEnemy(pick(['grunt', 'grunt', 'runner', 'tank']),
+                      cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.9);
+    }
+    for (let i = 0; i < 4; i++) {
+      const a = rand(0, TAU);
+      this.spawnEnemy('brute', cx + Math.cos(a) * 430, cy + Math.sin(a) * 380);
+    }
+  }
+
+  updateAttract(dt) {
+    this.director.update(dt, this);
+    if (this.director.elapsed > 240) this.director.elapsed = 120;
+    this.rebuildGrid();
+    this.updateEnemies(dt);
+    this.updateNodes(dt);
+    this.updateBullets(dt);
+    this.updateParticles(dt);
+    // Drift the camera slowly around the arena centre.
+    const t = performance.now() / 1000;
+    this.camera.x = WORLD_W / 2 + Math.cos(t * 0.08) * 240;
+    this.camera.y = WORLD_H / 2 + Math.sin(t * 0.06) * 150;
+    this.clampCamera();
+    for (let i = this.coins.length - 1; i >= 0; i--) {
+      const c = this.coins[i];
+      c.life -= dt;
+      if (c.life <= 0) {
+        c.alive = false;
+        this.coins[i] = this.coins[this.coins.length - 1];
+        this.coins.pop();
+        this.coinPool.push(c);
+      }
+    }
+  }
+
   announce(text, color) {
     this.banner = { text, color, life: 2.2 };
+    if (!this.attract && (text.startsWith('HORDE') || text.startsWith('FINAL'))) this.audio.horde();
   }
 
   /* The world zooms out on small screens so a phone still sees a horde. */
@@ -73,7 +131,7 @@ class Game {
     this.screen.h = cssH;
     // Never zoom out past the arena itself, or the view shows empty void
     // beyond the world edges on tall phone screens.
-    const fit = Math.max(cssW / WORLD_W, cssH / WORLD_H);
+    const fit = Math.max(cssW / WORLD_W, cssH / (WORLD_H * TILT));
     this.scale = clamp(Math.min(cssW / 1100, cssH / 760), Math.max(0.5, fit), 1.15);
     this.view.w = cssW / this.scale;
     this.view.h = cssH / this.scale;
@@ -122,7 +180,7 @@ class Game {
   spawnCoin(x, y, value, kind = 'gold') {
     if (this.coins.length >= MAX_COINS) return;
     const c = (this.coinPool.pop() || new Coin()).reset(x, y, value);
-    c.kind = kind;
+    c.pickup = kind;
     this.coins.push(c);
   }
 
@@ -131,7 +189,8 @@ class Game {
       if (this.particles.length >= MAX_PARTICLES) return;
       const a = rand(0, TAU), s = rand(0.3, 1) * power;
       const p = (this.particlePool.pop() || new Particle())
-        .reset(x, y, Math.cos(a) * s, Math.sin(a) * s, rand(0.18, 0.45), color, rand(1.5, 3.5));
+        .reset(x, y, Math.cos(a) * s, Math.sin(a) * s, rand(0.18, 0.45), color,
+               rand(1.5, 3.5), rand(8, 26), rand(60, 190));
       this.particles.push(p);
     }
   }
@@ -142,6 +201,8 @@ class Game {
     if (this.state !== 'playing') return;
 
     this.input.update();
+    this.focus.x = this.player.x;
+    this.focus.y = this.player.y;
     this.director.update(dt, this);
     this.timeLeft -= dt;
 
@@ -168,6 +229,7 @@ class Game {
     const p = this.player;
     if (this.input.takeDash() && p.dash()) {
       this.burst(p.x, p.y, 10, '#8fd8ff', 180);
+      this.audio.dash();
     }
 
     p.dashTimer = Math.max(0, p.dashTimer - dt);
@@ -187,6 +249,7 @@ class Game {
 
     p.x = clamp(p.x + p.vx * dt, p.radius, WORLD_W - p.radius);
     p.y = clamp(p.y + p.vy * dt, p.radius, WORLD_H - p.radius);
+    p.anim += Math.hypot(p.vx, p.vy) * dt * 0.07;
 
     // Auto-fire at whatever is closest; aim drives the sprite's facing too.
     // The target is cached between shots: nearestEnemy is a full-crowd scan.
@@ -238,6 +301,7 @@ class Game {
 
   updateEnemies(dt) {
     const p = this.player;
+    const focus = this.focus;
     const list = this.enemies;
 
     for (let i = list.length - 1; i >= 0; i--) {
@@ -246,7 +310,7 @@ class Game {
       e.touchTimer = Math.max(0, e.touchTimer - dt);
 
       // Seek the player with a little sway so the mass doesn't look rigid.
-      let dx = p.x - e.x, dy = p.y - e.y;
+      let dx = focus.x - e.x, dy = focus.y - e.y;
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
       e.wobble += dt * 3;
@@ -277,6 +341,12 @@ class Game {
       e.x += e.vx * dt;
       e.y += e.vy * dt;
 
+      // Stride speed follows actual movement so the crowd never moonwalks.
+      e.anim += Math.hypot(e.vx, e.vy) * dt * 0.09;
+      if (Math.abs(e.vx) > 6) e.flip = e.vx < 0;
+
+      if (this.attract) continue;
+
       // Contact damage, rate limited per enemy.
       const touch = e.radius + p.radius;
       if (e.touchTimer <= 0 && dist2(e.x, e.y, p.x, p.y) < touch * touch) {
@@ -284,6 +354,7 @@ class Game {
         if (p.hurt(e.damage)) {
           this.shake = Math.min(14, this.shake + 4);
           this.burst(p.x, p.y, 6, '#ff6b6b', 150);
+          this.audio.hurt();
         }
       }
     }
@@ -297,6 +368,7 @@ class Game {
 
     e.alive = false;
     this.kills++;
+    this.audio.kill();
     const d = e.def;
     this.burst(e.x, e.y, e.type === 'brute' ? 24 : 5, d.dark, e.type === 'brute' ? 260 : 120);
     for (let i = 0; i < d.coins; i++) {
@@ -305,6 +377,7 @@ class Game {
     if (e.type === 'brute') {
       this.spawnCoin(e.x, e.y, 18, 'health');
       this.shake = Math.min(16, this.shake + 6);
+      this.audio.bruteKill();
     }
   }
 
@@ -333,9 +406,11 @@ class Game {
           const want = Math.min(p.gold, DEPOSIT_RATE * dt);
           const spent = node.feed(want);
           p.gold -= spent;
+          if (spent > 0) this.audio.deposit();
           if (node.pulse === 1) {
             this.announce('NODE LV' + node.level, '#8fd8ff');
             this.burst(node.x, node.y, 18, '#8fd8ff', 220);
+            this.audio.upgrade();
           }
         }
       }
@@ -351,13 +426,14 @@ class Game {
       if (node.fireTimer > 0) continue;
 
       node.fireTimer = st.interval;
+      this.audio.turretShoot();
       for (let i = 0; i < st.barrels; i++) {
         const off = (i - (st.barrels - 1) / 2) * 0.16;
         const a = node.angle + off;
         this.spawnBullet(
           node.x + Math.cos(a) * 22, node.y + Math.sin(a) * 22,
           Math.cos(a), Math.sin(a), 580, st.damage,
-          { life: st.range / 580 + 0.1, splash: st.splash, radius: 4.5, color: '#8fd8ff' }
+          { life: st.range / 580 + 0.1, splash: st.splash, radius: 4.5, color: '#8fd8ff', z: 26 }
         );
       }
     }
@@ -432,15 +508,19 @@ class Game {
       }
       c.x += c.vx * dt;
       c.y += c.vy * dt;
+      c.z += c.vz * dt;
+      c.vz -= 460 * dt;
+      if (c.z < 0) { c.z = 0; c.vz *= -0.4; }
 
       const grab = p.radius + 12;
       if (d2 < grab * grab) {
-        if (c.kind === 'health') {
+        if (c.pickup === 'health') {
           p.heal(c.value);
           this.burst(c.x, c.y, 8, '#7bf0a6', 120);
         } else {
           p.gold += c.value;
           this.goldBanked += c.value;
+          this.audio.coin();
         }
         c.life = 0;
       }
@@ -461,6 +541,9 @@ class Game {
       p.life -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      p.z += p.vz * dt;
+      p.vz -= 420 * dt;               // debris arcs instead of sliding
+      if (p.z < 0) { p.z = 0; p.vz *= -0.35; }
       p.vx = damp(p.vx, 0, 4, dt);
       p.vy = damp(p.vy, 0, 4, dt);
       if (p.life <= 0) {
@@ -474,11 +557,19 @@ class Game {
 
   updateCamera(dt) {
     const p = this.player;
-    const halfW = this.view.w / 2, halfH = this.view.h / 2;
-    const tx = clamp(p.x, Math.min(halfW, WORLD_W / 2), Math.max(WORLD_W - halfW, WORLD_W / 2));
-    const ty = clamp(p.y, Math.min(halfH, WORLD_H / 2), Math.max(WORLD_H - halfH, WORLD_H / 2));
-    this.camera.x = damp(this.camera.x, tx, 9, dt);
-    this.camera.y = damp(this.camera.y, ty, 9, dt);
+    this.camera.x = damp(this.camera.x, p.x, 9, dt);
+    this.camera.y = damp(this.camera.y, p.y, 9, dt);
+    this.clampCamera();
+  }
+
+  /* Vertical limits are in projected space, since screen Y is world Y * TILT. */
+  clampCamera() {
+    const halfW = this.view.w / 2;
+    const halfH = (this.view.h / 2) / TILT;
+    this.camera.x = clamp(this.camera.x,
+      Math.min(halfW, WORLD_W / 2), Math.max(WORLD_W - halfW, WORLD_W / 2));
+    this.camera.y = clamp(this.camera.y,
+      Math.min(halfH, WORLD_H / 2), Math.max(WORLD_H - halfH, WORLD_H / 2));
   }
 }
 

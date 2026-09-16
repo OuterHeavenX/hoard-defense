@@ -3,6 +3,14 @@
 
 const TAU = Math.PI * 2;
 
+/* Ground-plane foreshortening for the 2.5D view. World Y is squashed by this
+   on screen, and sprite height is subtracted from it, which is what makes
+   bodies stand up out of the floor. */
+const TILT = 0.58;
+
+/* world (x, y, z) -> screen y */
+function projY(worldY, height) { return worldY * TILT - (height || 0); }
+
 function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
 function lerp(a, b, t) { return a + (b - a) * t; }
 function rand(a, b) { return a + Math.random() * (b - a); }

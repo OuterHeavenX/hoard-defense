@@ -109,6 +109,20 @@ html, body {
   overflow: auto;
 }
 
+/* The attract battle plays behind the title, so it gets a vignette rather
+   than a flat scrim - the fight should still read through it. */
+#overlay.title-mode {
+  background: radial-gradient(ellipse at center,
+    rgba(6, 8, 5, 0.12) 0%, rgba(6, 8, 5, 0.62) 62%, rgba(6, 8, 5, 0.8) 100%);
+  backdrop-filter: none;
+}
+
+#overlay.title-mode .title-panel {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
 .hidden { display: none !important; }
 
 .panel {
@@ -188,3 +202,130 @@ button.primary:hover { background: #ffe07a; }
   .panel { padding: 20px 16px 16px; }
   .rules { font-size: 12px; }
 }
+
+/* ------------------------------------------------------------ Title menu */
+
+#overlay.title-mode .title-panel {
+  position: relative;
+  z-index: 0;
+}
+
+/* A soft pool of shade behind the title column: the attract battle stays
+   visible around it, but the text keeps its contrast against the crowd. */
+#overlay.title-mode .title-panel::before {
+  content: '';
+  position: absolute;
+  inset: -48px -72px;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center,
+    rgba(6, 8, 5, 0.92) 0%, rgba(6, 8, 5, 0.75) 48%, rgba(6, 8, 5, 0) 78%);
+}
+
+.title-panel h1 {
+  text-shadow: 0 6px 24px rgba(0, 0, 0, 0.95), 0 2px 0 rgba(0, 0, 0, 0.8);
+}
+
+/* Over a moving battle these need to be solid, not translucent. */
+#overlay.title-mode .menu button {
+  background: rgba(10, 12, 8, 0.86);
+  border-color: rgba(238, 243, 226, 0.45);
+}
+
+#overlay.title-mode .menu button:hover { background: rgba(32, 38, 26, 0.94); }
+
+#overlay.title-mode .menu button.primary {
+  background: var(--gold);
+  border-color: var(--gold);
+}
+
+#overlay.title-mode .menu button.primary:hover { background: #ffe07a; }
+
+.title-panel .tagline {
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 1), 0 0 16px rgba(0, 0, 0, 0.95);
+  margin-bottom: 26px;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+.menu button { margin: 0; width: 100%; }
+
+.version {
+  margin: 24px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: #8b9678;
+  text-transform: uppercase;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 1), 0 0 18px rgba(0, 0, 0, 0.9);
+}
+
+/* -------------------------------------------------------------- Bestiary */
+
+.bestiary {
+  display: grid;
+  gap: 7px;
+  margin: 0 0 22px;
+  text-align: left;
+  font-size: 12px;
+  color: #c3ceb1;
+}
+
+.bestiary span { display: flex; align-items: center; gap: 9px; }
+
+.dot {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  flex: none;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.3);
+}
+
+.dot.grunt  { background: #7e9a5a; }
+.dot.runner { background: #d2703f; }
+.dot.tank   { background: #6f7fae; }
+.dot.brute  { background: #c8496a; }
+
+/* -------------------------------------------------------------- Settings */
+
+.setting {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 4px;
+  border-bottom: 1px dashed rgba(238, 243, 226, 0.12);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+}
+
+.setting label { color: #d6dfc7; }
+
+.toggle {
+  margin: 0;
+  padding: 7px 20px;
+  font-size: 12px;
+  min-width: 74px;
+}
+
+.toggle[aria-pressed="true"] {
+  background: rgba(143, 216, 255, 0.16);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.toggle[aria-pressed="false"] { color: #8b9678; }
+
+input[type="range"] {
+  flex: 1;
+  max-width: 170px;
+  accent-color: var(--gold);
+  height: 22px;
+}
+
+.back { margin-top: 20px; }

@@ -146,8 +146,33 @@ function buildCharacterSprites() {
   }
 }
 
+/* Rendered frames carry their ground anchor (ox, oy in drawn pixels) and
+   a drawn size scaled so the body stands the same height the placeholder
+   did, which keeps hitboxes and bars where they were. Placeholders anchor
+   at bottom-centre. Every draw site uses ox/oy, so both look the same to
+   the renderer. */
+const CHAR_HEIGHT_PX = { player: 40, grunt: 33, runner: 32, tank: 45, brute: 86, ally: 68 };
+const charFrameCache = {};
+
 function characterFrame(type, frame, flip, flash) {
-  const set = characterSprites[type];
-  const bank = flash ? set.flash : set.normal;
-  return bank[flip ? 1 : 0][frame % WALK_FRAMES];
+  const set = typeof Assets !== 'undefined' && Assets.chars[type];
+  if (set) {
+    const idx = frame % set.frames.length;
+    const key = type + ':' + idx + ':' + (flip ? 1 : 0) + (flash ? 1 : 0);
+    let f = charFrameCache[key];
+    if (f) return f;
+    const meta = set.meta;
+    const cosElev = Math.sqrt(1 - TILT * TILT);
+    const bodyPx = meta.bodyUnits * cosElev * set.unitPx * set.ss;
+    const k = CHAR_HEIGHT_PX[type] / bodyPx;
+    const w = meta.w * k, h = meta.h * k;
+    const ax = flip ? 1 - meta.anchorX : meta.anchorX;
+    f = { canvas: set.frames[idx][(flip ? 1 : 0) + (flash ? 2 : 0)], w, h, ox: ax * w, oy: meta.anchorY * h, rendered: true };
+    charFrameCache[key] = f;
+    return f;
+  }
+  const bank = flash ? characterSprites[type].flash : characterSprites[type].normal;
+  const p = bank[flip ? 1 : 0][frame % WALK_FRAMES];
+  if (p.ox === undefined) { p.ox = p.w / 2; p.oy = p.h; }
+  return p;
 }

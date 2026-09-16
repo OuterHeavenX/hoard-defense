@@ -32,8 +32,9 @@ crowd, turrets and brutes, not a backdrop image. From there:
 
 - **PLAY** — start the stage
 - **HOW TO PLAY** — controls and a short bestiary
-- **SETTINGS** — sound on/off, volume, screen shake on/off (all persisted to
-  `localStorage`, so they survive a reload)
+- **SETTINGS** — sound, music and their volumes, camera distance, a graphics quality
+  preset (low / medium / high), an FPS readout, dynamic lighting and screen shake (all
+  persisted to `localStorage`, so they survive a reload)
 
 Pausing offers resume, restart and quit to title.
 
@@ -70,9 +71,9 @@ are carrying enough gold to finish the next tier.
 
 ```
 index.html        ready to play, no build step
-assets/           Blender-rendered towers, floor tiles and golem frames, plus manifests
-models/           golem.blend - the rigged, animated boss
-tools/            render_assets.py and build_golem.py - the Blender scenes
+assets/           Blender-rendered towers, floors, golem and character frames, plus manifests
+models/           golem.blend and characters.blend - the rigged, animated figures
+tools/            render_assets.py, build_golem.py, build_characters.py - the Blender scenes
 css/style.css     HUD, menus, overlays
 js/utils.js       math, formatting, the TILT projection constant
 js/assets.js      loads the rendered art, with procedural fallbacks
@@ -81,7 +82,7 @@ js/spatial.js     uniform grid for crowd queries
 js/input.js       keyboard + touch stick
 js/audio.js       synthesised sound effects (no audio files)
 js/music.js       reactive synthesised music loop
-js/sprites.js     procedural character sprite baking
+js/sprites.js     character frame lookup, with a procedural fallback baker
 js/entities.js    player, enemies, bosses, bullets, coins, nodes
 js/perks.js       level-up perk draft
 js/camp.js        persistent bank, permanent upgrades, best-run records
@@ -179,6 +180,20 @@ The camera frame is fitted to the evaluated geometry across every rendered pose 
 than guessed, because guessing clipped the raised fists straight off the wind-up. The
 bone rotation convention was measured with diagnostic renders, not assumed.
 
+### The characters
+
+The player, the four enemy types and the Juggernaut are built the same way in
+`tools/build_characters.py` and saved to `models/characters.blend`: rounded-block
+humanoids on the golem's 19-bone rig layout, each with its own proportions (the runner
+is lean and hunched, the tank is a barrel, the brute is twice the height with a club),
+helmet and plating, and a weapon that swings with the walk — rifle, club or the Gatling
+gun. Six walk frames per character are rendered from the game camera at 3x supersample
+and shipped with a manifest of ground anchors and body heights, so the game scales each
+one to a fixed on-screen height and stands it on its feet. Flipped and hit-flash
+variants are built at load from the base frames, one canvas per variant, so a hit costs
+a blit and not a filter. If any frame of a character fails to load, that character
+falls back to the old procedural baker and the rest stay rendered.
+
 To re-render after changing the models or shaders:
 
 ```
@@ -186,9 +201,11 @@ pip install bpy          # Blender as a Python module, no GUI needed
 python3 tools/render_assets.py           # everything
 python3 tools/render_assets.py towers    # or just the towers / ground
 python3 tools/build_golem.py             # rebuild, re-rig and re-render the golem
+python3 tools/build_characters.py        # rebuild, re-rig and re-render the characters
 ```
 
-Each tower takes about a second on CPU. The manifest is written as JavaScript rather
+Each tower takes about a second on CPU; the floor tiles are 512px and take a minute
+each; the characters take a few minutes for all six. The manifest is written as JavaScript rather
 than JSON because `fetch()` of a local file is blocked over `file://`, and the game has
 to keep opening straight from `index.html`. If an image fails to load, the renderer
 falls back to the procedural pedestal it drew before the art existed.
@@ -217,7 +234,26 @@ The stage is built to put ~1000+ bodies on screen at once, which shaped two deci
   with it, the cost per body is fixed and the crowd looks identical.
 
 The simulation measures ~0.2ms per step at 400+ enemies, leaving the frame budget to
-rendering.
+rendering — and rendering is where a real GPU can still be brought to its knees by a
+2D canvas, so the renderer avoids the things that do that:
+
+- **No `ctx.filter` blur.** Canvas blur is a CPU readback on most browsers and cost more
+  than the whole rest of the frame. Bloom and the light layer are additive blits of a
+  few cached radial sprites onto a quarter-resolution canvas instead.
+- **No per-frame gradients.** Every glow, torch and light is a sprite baked once per
+  colour; the frame only ever calls `drawImage`.
+- **Only the visible floor is filled.** The pattern fill covers the camera slice, not
+  the whole arena.
+- **The backing store is capped.** A 4K monitor at device pixel ratio 2 would otherwise
+  ask the canvas for a 7680-pixel-wide frame. The quality preset caps the backing width
+  (1280 / 1920 / 2560 for low / medium / high); high also enables the light layer and
+  more ambient particles, low drops them.
+- **Catch-up is bounded.** After a stall the fixed-step loop runs at most three steps
+  per frame rather than spiralling.
+
+The FPS readout in Settings shows the real number on your hardware; if it sits below
+the display's refresh rate at *medium*, drop to *low*, and if it is pinned there, *high*
+is free.
 
 ## Tuning
 
@@ -235,8 +271,10 @@ Most of the feel lives in a few constants:
 - `js/camp.js` — `CAMP_UPGRADES` and `BANK_SHARE`, the cut of each run that comes home
 - `js/music.js` — `MUSIC_ROOTS` and `MUSIC_LADDER` for the progression and arpeggio
 
-The character art is deliberately placeholder. `bakeBiped()` is the only thing that
-draws a figure, so swapping in real sprite sheets means replacing that one function —
-the renderer just asks for a frame and blits it.
+The character art is the Blender render; `CHAR_HEIGHT_PX` in `js/sprites.js` sets how
+tall each figure stands on screen. `bakeBiped()` is only the fallback, so swapping in
+different sprite sheets means writing a manifest in the shape of
+`assets/char_manifest.js` — the renderer just asks `characterFrame()` for a frame and
+blits it.
 
 `window.__game` is exposed in the console for poking at a live run.

@@ -758,6 +758,7 @@ class Game {
     }
 
     b.telegraph = Math.max(0, b.telegraph - dt);
+    b.slamHold = Math.max(0, (b.slamHold || 0) - dt);
     b.attackTimer -= dt;
 
     if (b.def.attack === 'charge' && b.charging > 0) {
@@ -769,6 +770,7 @@ class Game {
       b.pendingAttack = true;
     } else if (b.pendingAttack && b.telegraph <= 0) {
       b.pendingAttack = false;
+      b.slamHold = 0.35;             // the strike frame lingers, then recovers
       if (b.def.attack === 'slam') {
         this.splash(b.x, b.y, 200, 26);
         this.burst(b.x, b.y, 34, '#ffb36b', 280);

@@ -201,6 +201,56 @@ Game.prototype.drawEnemy = function (ctx, e) {
   }
 };
 
+/* The rendered golem. Walk frames advance with the boss's stride; the slam
+   frames play through the telegraph wind-up. Returns false if the art is not
+   loaded so the procedural boss can draw instead. */
+Game.prototype.drawGolem = function (ctx, b, py) {
+  const set = Assets.golem;
+  if (!set) return false;
+  const meta = set.meta;
+
+  let anim = 'walk', index;
+  if (b.telegraph > 0 || b.slamHold > 0) {
+    anim = 'slam';
+    // Wind-up runs frames 0..1 over the telegraph, the strike lands as it ends.
+    const t = b.telegraph > 0 ? 1 - b.telegraph / 0.7 : 1;
+    index = b.slamHold > 0 ? (b.slamHold > 0.12 ? 2 : 3) : Math.min(1, Math.floor(t * 2));
+  } else {
+    index = Math.floor(b.anim * 0.55) % set.walk.length;
+  }
+  const img = Assets.golemFrame(b.bossType, anim, index);
+  if (!img) return false;
+
+  // Scale so the standing body spans the height the procedural boss did,
+  // keeping hitboxes and bars where they were. The render foreshortens
+  // vertical extent by cos(elev), so the body's image height is that of
+  // its true height in units.
+  const cosElev = Math.sqrt(1 - TILT * TILT);
+  const bodyPx = meta.bodyUnits * cosElev * meta.unitPx * meta.ss;
+  const s = (b.radius * 2.6) / bodyPx;
+  const w = meta.w * s, h = meta.h * s;
+  const top = py - meta.anchorY * h;
+  // The fitted frame is not centred on the body, so the ground origin's
+  // horizontal position comes from the manifest too. Mirroring about b.x
+  // keeps it correct when he faces the other way.
+  const left = b.x - (meta.anchorX !== undefined ? meta.anchorX : 0.5) * w;
+
+  ctx.save();
+  if (b.flip) { ctx.translate(b.x, 0); ctx.scale(-1, 1); ctx.translate(-b.x, 0); }
+  ctx.drawImage(img, left, top, w, h);
+  // Damage flash: the same frame washed white, faded in over the sprite.
+  if (b.flash > 0) {
+    const wash = Assets.golemFrame('flash', anim, index);
+    if (wash) {
+      ctx.globalAlpha = Math.min(0.28, b.flash * 0.28);   // under constant fire this is pinned on
+      ctx.drawImage(wash, left, top, w, h);
+      ctx.globalAlpha = 1;
+    }
+  }
+  ctx.restore();
+  return true;
+};
+
 Game.prototype.drawBoss = function (ctx, b) {
   const py = b.y * TILT;
   const r = b.radius;
@@ -220,6 +270,8 @@ Game.prototype.drawBoss = function (ctx, b) {
   ctx.beginPath();
   ctx.ellipse(b.x, py, r * 1.1, r * 0.5, 0, 0, TAU);
   ctx.fill();
+
+  if (this.drawGolem(ctx, b, py)) return;
 
   // The boss is under fire nonstop, so a colour-swap flash would leave it a
   // featureless white slab. A translucent overlay reads as damage instead.

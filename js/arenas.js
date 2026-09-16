@@ -51,7 +51,7 @@ const ARENAS = [
   {
     id: 'ascent',
     towers: 'orc',          // the orc fortress the corridor climbs through
-    void: '#0e1014',
+    void: '#0e1014',      // the dark either side of the corridor
     name: 'THE ASCENT',
     blurb: 'A climb, not a hold. They pour down the stairs; the Juggernaut waits caged at the top.',
     width: 1000,
@@ -132,7 +132,6 @@ const ARENAS = [
   {
     id: 'pit',
     towers: 'flame',        // fire towers for a pit that already burns
-    void: '#120c0a',        // rock walls
     name: 'THE PIT',
     blurb: 'Nowhere to run. Three nodes in a tight triangle at the centre: hold the middle or lose everything at once.',
     width: 1200,
@@ -153,7 +152,6 @@ const ARENAS = [
   {
     id: 'bastion',
     towers: 'arcane',       // arcane spires on the last stand
-    void: '#0e1116',
     name: 'THE BASTION',
     blurb: 'They come from the north, all of them. Five nodes in a line make a wall; the surges try to walk around its ends.',
     width: 2000,

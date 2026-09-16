@@ -227,7 +227,21 @@ class Game {
     // can pull back to see a 1000-wide corridor or nodes 620 out: at the old
     // 0.5 floor a phone saw ~780 world px, which fit stages 1-2 exactly and
     // cut the wider layouts off - what read as 'zoomed in' on stages 3+.
-    this.scale = clamp(this.zoom * Math.min(cssW / 1100, cssH / 760), 0.24, 1.15);
+    //
+    // The ceiling has to clear what a large desktop needs. At the old 1.15 a
+    // 2560-wide window sat below its own default distance, so the arena was
+    // pinned small in the middle of the screen and the zoom-in button did
+    // nothing - the complaint that the game looked zoomed out.
+    const base = this.zoom * Math.min(cssW / 1100, cssH / 760);
+    // An open arena should at least span the window. On a wide desktop the
+    // default distance left a small stage floating with out-of-bounds ground
+    // either side of it. Only the width is forced: no arena is ever as tall
+    // as a screen once the height is squashed by the tilt, so a vertical gap
+    // is normal and the ground simply runs on through it. A corridor or a
+    // chasm keeps its own framing, and the 2.0 ceiling stops a narrow arena
+    // from dragging the camera onto the player's boots.
+    const span = this.arena && !this.arena.void ? Math.min(cssW / WORLD_W, 2.0) : 0;
+    this.scale = clamp(Math.max(base, span), 0.24, 2.4);
     this.view.w = cssW / this.scale;
     this.view.h = cssH / this.scale;
   }

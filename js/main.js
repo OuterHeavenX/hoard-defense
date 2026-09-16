@@ -62,6 +62,11 @@
   } catch (e) { /* private mode */ }
   game.shakeEnabled = shakeEnabled;
 
+  let lightingEnabled = true;
+  try { lightingEnabled = localStorage.getItem('hoard.lighting') !== 'off'; } catch (e) { /* private mode */ }
+  game.lightingEnabled = lightingEnabled;
+  const lightingBtn = document.getElementById('opt-lighting');
+
   const soundBtn = document.getElementById('opt-sound');
   const shakeBtn = document.getElementById('opt-shake');
   const volume = document.getElementById('opt-volume');
@@ -74,6 +79,21 @@
   }
   paintToggle(soundBtn, game.audio.enabled);
   paintToggle(shakeBtn, shakeEnabled);
+  paintToggle(lightingBtn, lightingEnabled);
+  lightingBtn.addEventListener('click', () => {
+    lightingEnabled = !lightingEnabled;
+    game.lightingEnabled = lightingEnabled;
+    paintToggle(lightingBtn, lightingEnabled);
+    try { localStorage.setItem('hoard.lighting', lightingEnabled ? 'on' : 'off'); } catch (e) { /* ignore */ }
+    game.audio.click();
+  });
+
+  // The on-screen pause: the only way to pause on touch.
+  document.getElementById('btn-pause').addEventListener('click', () => {
+    if (game.state !== 'playing') return;
+    game.audio.click();
+    game.state = 'paused';
+  });
   volume.value = String(Math.round(game.audio.volume * 100));
   paintToggle(musicBtn, music.enabled);
   musicVol.value = String(Math.round(music.volume * 100));
@@ -358,6 +378,9 @@
 
   addEventListener('blur', () => {
     if (game.state === 'playing') game.state = 'paused';
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && game.state === 'playing') game.state = 'paused';
   });
 
   toTitle();

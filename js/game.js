@@ -26,6 +26,7 @@ class Game {
     this.input = new Input(canvas);
     this.audio = new Audio();
     this.shakeEnabled = true;
+    this.lightingEnabled = true;
     this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
     this.ground = makeGroundPattern(this.ctx, this.arena.ground, this.arena.tile);
     this.screen = { w: 960, h: 600 };   // css pixels
@@ -61,6 +62,10 @@ class Game {
     this.nova = null;
     this.muzzle = null;
     this.pendingLevels = 0;
+    this.trail = [];            // dash afterimages
+    this.rings = [];            // ground shockwaves (slams, upgrades)
+    this.ambient = [];          // drifting dust / embers / mist
+    this.ambientTimer = 0;
 
     // Perk state. Every perk lands on one of these.
     this.level = 1;
@@ -160,6 +165,7 @@ class Game {
     this.updateNodes(dt);
     this.updateBullets(dt);
     this.updateParticles(dt);
+    this.updateEffects(dt);
     // Drift the camera slowly around the arena centre.
     const t = performance.now() / 1000;
     this.camera.x = WORLD_W / 2 + Math.cos(t * 0.08) * 240;
@@ -187,10 +193,11 @@ class Game {
     this.dpr = dpr;
     this.screen.w = cssW;
     this.screen.h = cssH;
-    // Never zoom out past the arena itself, or the view shows empty void
-    // beyond the world edges on tall phone screens.
-    const fit = Math.max(cssW / WORLD_W, cssH / (WORLD_H * TILT));
-    this.scale = clamp(Math.min(cssW / 1100, cssH / 760), Math.max(0.5, fit), 1.15);
+    // One camera distance for every stage. Nothing is fitted to the arena:
+    // a small or narrow stage shows its edges and the void beyond them (a
+    // chasm under The Bridge, rock around The Pit) rather than zooming in.
+    // Fitting made The Bridge 1.8x closer than the Dust Bowl.
+    this.scale = clamp(Math.min(cssW / 1100, cssH / 760), 0.5, 1.15);
     this.view.w = cssW / this.scale;
     this.view.h = cssH / this.scale;
   }
@@ -220,7 +227,7 @@ class Game {
   }
 
   spawnAtEdge(type) {
-    const p = this.edgePoint();
+    const p = this.edgePoint(pick(this.arena.spawnSides || [0, 1, 2, 3]));
     this.spawnEnemy(type, p.x, p.y);
   }
 
@@ -304,6 +311,7 @@ class Game {
     this.updateParticles(dt);
     this.updateDecals(dt);
     this.updateNumbers(dt);
+    this.updateEffects(dt);
     this.updateCamera(dt);
 
     if (this.banner) {
@@ -331,6 +339,13 @@ class Game {
     if (this.input.takeDash() && p.dash()) {
       this.burst(p.x, p.y, 10, '#8fd8ff', 180);
       this.audio.dash();
+    }
+    if (p.dashTimer > 0 && this.trail.length < 12) {
+      this.trail.push({ x: p.x, y: p.y, facing: p.facing, flip: p.flip, anim: p.anim, life: 0.28, maxLife: 0.28 });
+    }
+    for (let i = this.trail.length - 1; i >= 0; i--) {
+      this.trail[i].life -= dt;
+      if (this.trail[i].life <= 0) this.trail.splice(i, 1);
     }
 
     p.dashTimer = Math.max(0, p.dashTimer - dt);
@@ -497,6 +512,15 @@ class Game {
     e.hp -= amount;
     e.flash = 1;
 
+    // A spark where the round lands - rate limited by the particle cap.
+    if (knockX !== undefined && this.particles.length < MAX_PARTICLES - 40) {
+      const p = (this.particlePool.pop() || new Particle())
+        .reset(e.x - knockX * e.radius, e.y - knockY * e.radius,
+               -knockX * rand(60, 160) + rand(-40, 40), -knockY * rand(60, 160) + rand(-40, 40),
+               rand(0.08, 0.16), '#fff1b0', rand(1.5, 2.5), 14, rand(40, 120));
+      this.particles.push(p);
+    }
+
     // Only the chunky bodies get knockback and a number; doing it for every
     // grunt would be noise on screen and a needless cost.
     if (e.type === 'boss' || e.type === 'brute') {
@@ -521,7 +545,9 @@ class Game {
     const d = e.def;
     this.addDecal(e.x, e.y, e.radius * e.scale, d.dark);
     if (e.type === 'boss') this.addDecal(e.x, e.y, e.radius * 2.2, d.dark);
+    // Gibs: a few body-coloured chunks that arc and bounce, plus the dark spray.
     this.burst(e.x, e.y, e.type === 'brute' ? 24 : 5, d.dark, e.type === 'brute' ? 260 : 120);
+    this.burst(e.x, e.y, e.type === 'brute' ? 10 : 3, d.color, e.type === 'brute' ? 200 : 110);
     for (let i = 0; i < d.coins; i++) {
       this.spawnCoin(e.x + rand(-8, 8), e.y + rand(-8, 8), d.value);
     }
@@ -733,7 +759,7 @@ class Game {
     const a = rand(0, TAU);
     const x = atX !== undefined ? clamp(atX, 60, WORLD_W - 60) : clamp(p.x + Math.cos(a) * 520, 60, WORLD_W - 60);
     const y = atY !== undefined ? clamp(atY, 60, WORLD_H - 60) : clamp(p.y + Math.sin(a) * 420, 60, WORLD_H - 60);
-    this.boss = new Boss(this.arena.boss, x, y, 1 + this.director.progress * 0.5);
+    this.boss = new Boss(this.arena.boss, x, y, (1 + this.director.progress * 0.5) * (this.arena.bossScale || 1));
     this.enemies.push(this.boss);
     this.announce(this.boss.name, '#ff7a6b');
     this.audio.horde();
@@ -754,6 +780,8 @@ class Game {
       this.shake = 26;
       this.hitStop = 0.28;
       this.burst(b.x, b.y, 60, b.def.dark, 360);
+      this.rings.push({ x: b.x, y: b.y, r: 30, maxR: 420, life: 0.9, maxLife: 0.9, color: '255,220,160' });
+      this.flashScreen = 0.6;
       return;
     }
 
@@ -774,6 +802,9 @@ class Game {
       if (b.def.attack === 'slam') {
         this.splash(b.x, b.y, 200, 26);
         this.burst(b.x, b.y, 34, '#ffb36b', 280);
+        this.burst(b.x, b.y, 30, '#5a4a3a', 220);       // dust
+        this.rings.push({ x: b.x, y: b.y, r: 40, maxR: 260, life: 0.55, maxLife: 0.55, color: '255,180,120' });
+        this.flashScreen = 0.35;
         this.shake = 16;
         for (let i = 0; i < 12; i++) {
           const a = rand(0, TAU);
@@ -801,6 +832,7 @@ class Game {
     for (const node of this.nodes) {
       node.pulse = Math.max(0, node.pulse - dt * 1.6);
       node.recentFeed = Math.max(0, node.recentFeed - dt);
+      node.recoil = Math.max(0, (node.recoil || 0) - dt * 9);
 
       // Pour carried gold in while the player stands on the pad.
       if (dist2(p.x, p.y, node.x, node.y) < node.padRadius * node.padRadius) {
@@ -816,6 +848,7 @@ class Game {
             } else {
               this.announce('NODE LV' + node.level, '#8fd8ff');
               this.burst(node.x, node.y, 18, '#8fd8ff', 220);
+              this.rings.push({ x: node.x, y: node.y, r: 20, maxR: 160, life: 0.5, maxLife: 0.5, color: '143,216,255' });
               this.audio.upgrade();
             }
           }
@@ -833,6 +866,7 @@ class Game {
       if (node.fireTimer > 0) continue;
 
       node.fireTimer = st.interval * this.turretRateMul;
+      node.recoil = 1;
       this.audio.turretShoot();
       for (let i = 0; i < st.barrels; i++) {
         const off = (i - (st.barrels - 1) / 2) * 0.16;
@@ -963,6 +997,42 @@ class Game {
         list.pop();
         this.particlePool.push(p);
       }
+    }
+  }
+
+  /* Ground rings, the screen flash, and the arena's ambient motes. */
+  updateEffects(dt) {
+    for (let i = this.rings.length - 1; i >= 0; i--) {
+      const r = this.rings[i];
+      r.life -= dt;
+      if (r.life <= 0) this.rings.splice(i, 1);
+    }
+    this.flashScreen = Math.max(0, (this.flashScreen || 0) - dt * 2.2);
+
+    const kind = this.arena.ambient;
+    if (kind) {
+      this.ambientTimer -= dt;
+      if (this.ambientTimer <= 0 && this.ambient.length < 70) {
+        this.ambientTimer = 0.05;
+        // Born just off the camera's window so drift carries them through it.
+        const cx = this.camera.x, cy = this.camera.y;
+        const m = { x: cx + rand(-this.view.w * 0.6, this.view.w * 0.6), y: cy + rand(-this.view.h * 0.7 / TILT, this.view.h * 0.7 / TILT),
+                    z: kind === 'mist' ? rand(4, 22) : rand(0, 60), life: rand(2.5, 5), maxLife: 0, kind };
+        m.maxLife = m.life;
+        if (kind === 'dust') { m.vx = rand(30, 70); m.vy = rand(-8, 8); m.vz = rand(-4, 6); m.size = rand(1.2, 2.4); }
+        else if (kind === 'embers') { m.vx = rand(-12, 12); m.vy = rand(-10, 10); m.vz = rand(18, 40); m.size = rand(1.4, 2.6); }
+        else { m.vx = rand(8, 22); m.vy = rand(-3, 3); m.vz = rand(-1, 1); m.size = rand(22, 46); }
+        this.ambient.push(m);
+      }
+      for (let i = this.ambient.length - 1; i >= 0; i--) {
+        const m = this.ambient[i];
+        m.life -= dt;
+        m.x += m.vx * dt; m.y += m.vy * dt; m.z += m.vz * dt;
+        if (m.kind === 'embers') m.vx += Math.sin(m.life * 5) * 18 * dt;
+        if (m.life <= 0) this.ambient.splice(i, 1);
+      }
+    } else if (this.ambient.length) {
+      this.ambient.length = 0;
     }
   }
 

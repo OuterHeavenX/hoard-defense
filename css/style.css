@@ -563,3 +563,24 @@ input[type="range"] {
   content: ' \1F512';
   font-size: 11px;
 }
+
+/* ---------------------------------------------------------- Pause button */
+
+#hud .hud-right { display: flex; flex-direction: column; align-items: flex-end; }
+
+.hud-btn {
+  pointer-events: auto;
+  margin: 0 0 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: #eef3e2;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(238, 243, 226, 0.35);
+  border-radius: 4px;
+  min-width: 52px;
+  min-height: 34px;       /* a real touch target */
+}
+
+.hud-btn:active { background: rgba(255, 255, 255, 0.18); }

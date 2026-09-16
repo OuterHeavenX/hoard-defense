@@ -5,6 +5,7 @@
 
 const Assets = {
   towers: [],            // per level: HTMLImageElement or null
+  towerPacks: {},        // family -> { meta, levels: [null, img x5] }
   ground: {},            // key -> HTMLImageElement
   golem: null,           // { walk: [img], slam: [img] } once loaded
   chars: {},             // type -> { meta, frames: [[base, flip, flash, flipflash]] }
@@ -21,6 +22,24 @@ const Assets = {
         pending.push(this.image('assets/' + entry.file).then((img) => { this.towers[i] = img; }));
       });
     }
+    // Per-arena tower families. Level 0, the bare foundation, is shared, so a
+    // family only carries the five built tiers. A family is published only
+    // once all five are in, the same rule the characters follow.
+    const packs = typeof TOWER_PACK_MANIFEST !== 'undefined' ? TOWER_PACK_MANIFEST : null;
+    const packSets = {};
+    if (packs) {
+      this.packMeta = packs;
+      for (const family in packs.families) {
+        const entries = packs.families[family].levels;
+        const set = { entries, levels: [null] };
+        entries.forEach((entry, i) => {
+          if (!entry) return;
+          pending.push(this.image('assets/' + entry.file).then((img) => { if (img) set.levels[i] = img; }));
+        });
+        packSets[family] = set;
+      }
+    }
+
     for (const key of ['stone', 'earth', 'ash']) {
       pending.push(this.image('assets/ground_' + key + '.png').then((img) => { this.ground[key] = img; }));
     }
@@ -51,6 +70,10 @@ const Assets = {
     Promise.all(pending).then(() => {
       // A character with any missing frame falls back to the placeholder
       // rather than blinking between the two.
+      for (const family in packSets) {
+        const set = packSets[family];
+        if (set.entries.every((entry, i) => !entry || set.levels[i])) this.towerPacks[family] = set;
+      }
       for (const type in charSets) {
         const set = charSets[type];
         if (set.frames.length === set.meta.frames.length && set.frames.every((f) => !!f)) this.chars[type] = set;
@@ -71,12 +94,33 @@ const Assets = {
     });
   },
 
-  tower(level) {
+  /* A node draws from its arena's family when one is loaded, and from the
+     shared set otherwise. Level 0 is the bare foundation in every arena, so
+     it always comes from the shared set. */
+  tower(level, family) {
+    const set = family && this.towerPacks[family];
+    if (set && set.levels[level]) return set.levels[level];
     return this.towers[level] || null;
   },
 
-  towerMeta(level) {
+  towerMeta(level, family) {
+    const set = family && this.towerPacks[family];
+    if (set && set.levels[level]) return set.entries[level];
     return this.manifest ? this.manifest.levels[level] : null;
+  },
+
+  /* The sprite scale differs between the two sets, so the caller has to know
+     which one answered. */
+  towerScale(level, family) {
+    const set = family && this.towerPacks[family];
+    if (set && set.levels[level]) return this.packMeta.ss;
+    return this.manifest ? this.manifest.ss : 2;
+  },
+
+  towerUnitPx(level, family) {
+    const set = family && this.towerPacks[family];
+    if (set && set.levels[level]) return this.packMeta.unitPx;
+    return this.manifest ? this.manifest.unitPx : 10;
   }
 };
 

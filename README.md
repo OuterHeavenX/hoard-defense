@@ -72,8 +72,10 @@ are carrying enough gold to finish the next tier.
 ```
 index.html        ready to play, no build step
 assets/           Blender-rendered towers, floors, golem and character frames, plus manifests
+packs/            the Craftpix model packs, as shipped - source for the tower families
 models/           golem.blend and characters.blend - the rigged, animated figures
-tools/            render_assets.py, build_golem.py, build_characters.py - the Blender scenes
+tools/            the Blender scenes: render_assets.py, build_golem.py,
+                  build_characters.py, build_pack_towers.py
 css/style.css     HUD, menus, overlays
 js/utils.js       math, formatting, the TILT projection constant
 js/assets.js      loads the rendered art, with procedural fallbacks
@@ -180,6 +182,44 @@ The camera frame is fitted to the evaluated geometry across every rendered pose 
 than guessed, because guessing clipped the raised fists straight off the wind-up. The
 bone rotation convention was measured with diagnostic renders, not assumed.
 
+### The tower families
+
+Every arena builds its own kind of tower. The Dust Bowl raises elven archer
+towers, the Foundry casts iron cannon towers, the Ascent is defended with the
+orc fortress it climbs through, the Bridge with high elven spires, the Pit
+with fire towers, the Crossroads with bolt throwers and the Bastion with
+arcane ones. The models come from four Craftpix low-poly packs, kept in
+`packs/` exactly as they were downloaded.
+
+A family is five models from a single pack, one per node level, so the tower
+keeps its silhouette and its palette as it grows. The two tower packs only
+ship four tiers, so the fifth is that pack's heavier weapon on the same base:
+at max level the tower does not just get taller, it re-arms. Level 0, the
+bare foundation, is the same in every arena and still comes from
+`render_assets.py`.
+
+`tools/build_pack_towers.py` does the conversion. It unpacks the zips on
+first run, strips the rigs, and stands each model on the origin. Then the
+part that matters: it scales the model so that its *projected* height - its
+real height times the cosine of the camera tilt, plus its footprint times the
+sine - matches the tower tier it replaces, so the new art drops into the old
+footprint without re-tuning a single arena. The shadow ellipse is measured
+across the bottom fifth of the model rather than its bounding box, because a
+tier-5 crown's spikes reach twice as wide as the tower actually stands.
+
+Two things about these packs had to be measured rather than assumed. Their
+FBX files store V the other way up and Blender's importer does not correct
+it, so left alone every tower reads its wall colour off the roof band of the
+64px palette and comes out green; rendering the albedo both ways settled it.
+And the palettes are mid-tone colours meant to be shown unlit, which under
+the tower rig's sun render to mud, so the packs get their own key, a cool
+fill from the camera side, and a little emission to keep the shadow face
+readable.
+
+A family tower carries its own modelled weapon, so the game leaves off the
+procedural barrels and the lamp it draws on a plain turret, and lights the
+ground only when the tower fires.
+
 ### The characters
 
 The player, the four enemy types and the Juggernaut are built the same way in
@@ -202,6 +242,8 @@ python3 tools/render_assets.py           # everything
 python3 tools/render_assets.py towers    # or just the towers / ground
 python3 tools/build_golem.py             # rebuild, re-rig and re-render the golem
 python3 tools/build_characters.py        # rebuild, re-rig and re-render the characters
+python3 tools/build_pack_towers.py       # every tower family
+python3 tools/build_pack_towers.py orc   # or just these
 ```
 
 Each tower takes about a second on CPU; the floor tiles are 512px and take a minute
@@ -264,7 +306,8 @@ Most of the feel lives in a few constants:
 - `js/entities.js` — `ENEMY_TYPES`, `DefenseNode.COSTS`, node `stats`
 - `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
 - `js/sprites.js` — the `looks` table: size, colour and pose per character
-- `js/arenas.js` — stage definitions; add an entry to add a stage
+- `js/arenas.js` — stage definitions; add an entry to add a stage, and
+  `towers` picks which family that stage builds
 - `js/perks.js` — the perk table and `xpForLevel()`
 - `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern; the `Ally` class
 - `js/game.js` — `LOCK_COST`, what the Juggernaut's cage takes to open

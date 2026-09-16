@@ -7,6 +7,7 @@
 const ARENAS = [
   {
     id: 'dustbowl',
+    towers: 'archer',       // warm earth, elven sandstone archer towers
     name: 'THE DUST BOWL',
     blurb: 'Open ground, six nodes in a wide ring. Nowhere to hide and nothing in your way.',
     width: 1900,
@@ -28,6 +29,7 @@ const ARENAS = [
   },
   {
     id: 'foundry',
+    towers: 'cannon',       // ash and embers, iron cannon towers
     name: 'THE FOUNDRY',
     blurb: 'Tighter, hotter, and they come faster. Four nodes to hold instead of six.',
     width: 1500,
@@ -48,6 +50,7 @@ const ARENAS = [
   },
   {
     id: 'ascent',
+    towers: 'orc',          // the orc fortress the corridor climbs through
     void: '#0e1014',
     name: 'THE ASCENT',
     blurb: 'A climb, not a hold. They pour down the stairs; the Juggernaut waits caged at the top.',
@@ -80,6 +83,7 @@ const ARENAS = [
   },
   {
     id: 'crossroads',
+    towers: 'ballista',     // earth again, but bolt throwers
     name: 'THE CROSSROADS',
     blurb: 'Two roads meet. One node at the junction buys time; the four at the road ends decide whether you keep it.',
     width: 1800,
@@ -103,6 +107,7 @@ const ARENAS = [
   },
   {
     id: 'bridge',
+    towers: 'elven',        // the high elven fortress over the chasm
     void: '#0a0f1a',        // the chasm
     name: 'THE BRIDGE',
     blurb: 'A long span with the hoard at both ends. Nodes at each abutment hold a side; the one at mid-span is the only place that covers both.',
@@ -126,6 +131,7 @@ const ARENAS = [
   },
   {
     id: 'pit',
+    towers: 'flame',        // fire towers for a pit that already burns
     void: '#120c0a',        // rock walls
     name: 'THE PIT',
     blurb: 'Nowhere to run. Three nodes in a tight triangle at the centre: hold the middle or lose everything at once.',
@@ -146,6 +152,7 @@ const ARENAS = [
   },
   {
     id: 'bastion',
+    towers: 'arcane',       // arcane spires on the last stand
     void: '#0e1116',
     name: 'THE BASTION',
     blurb: 'They come from the north, all of them. Five nodes in a line make a wall; the surges try to walk around its ends.',

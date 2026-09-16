@@ -176,6 +176,7 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
   const enemies = this.enemies;
   for (let i = 0; i < enemies.length; i++) put(enemies[i]);
   for (const node of this.nodes) put(node);
+  for (let i = 0; i < this.torches.length; i++) put(this.torches[i]);
   for (let i = 0; i < this.coins.length; i++) put(this.coins[i]);
   if (!this.attract) put(this.player);
   if (this.ally && !this.attract) put(this.ally);
@@ -190,6 +191,7 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
         case 'coin':  this.drawCoin(ctx, item); break;
         case 'player': this.drawPlayer(ctx, item); break;
         case 'ally': this.drawAlly(ctx, item); break;
+        case 'torch': this.drawTorch(ctx, item); break;
       }
     }
   }
@@ -456,6 +458,53 @@ Game.prototype.drawAlly = function (ctx, a) {
     ctx.font = 'bold 13px ui-monospace, monospace';
     ctx.textAlign = 'center';
     ctx.fillText('DOWN ' + Math.ceil(a.downTimer), a.x, top - 6);
+  }
+};
+
+/* A flame pole: an iron post with a bowl, a flame of three flickering
+   tongues, and the ember trail spawned in the effects tick. */
+Game.prototype.drawTorch = function (ctx, t) {
+  const py = t.y * TILT;
+  const top = py - 50;
+  const f = t.flicker;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(t.x + 4, py + 1, 9, 4, 0, 0, TAU);
+  ctx.fill();
+
+  // Post and bowl.
+  ctx.strokeStyle = '#2a2622';
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(t.x, py);
+  ctx.lineTo(t.x, top + 4);
+  ctx.stroke();
+  ctx.fillStyle = '#3d342c';
+  ctx.beginPath();
+  ctx.ellipse(t.x, top + 3, 8, 4, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#1f1b18';
+  ctx.beginPath();
+  ctx.ellipse(t.x, py, 7, 3, 0, 0, TAU);
+  ctx.fill();
+
+  // Flame: three tongues, the inner ones hotter, all leaning with the flicker.
+  const lean = (f - 0.86) * 30;
+  const tongues = [
+    ['rgba(255,110,30,0.85)', 9, 20],
+    ['rgba(255,190,60,0.95)', 6, 14],
+    ['rgba(255,245,200,1)', 3, 8]
+  ];
+  for (const [color, rx, ry] of tongues) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(t.x - rx, top);
+    ctx.quadraticCurveTo(t.x - rx * 0.4 + lean, top - ry * 0.9 * f, t.x + lean * 1.6, top - ry * 1.9 * f);
+    ctx.quadraticCurveTo(t.x + rx * 0.4 + lean, top - ry * 0.9 * f, t.x + rx, top);
+    ctx.closePath();
+    ctx.fill();
   }
 };
 
@@ -802,6 +851,7 @@ Game.prototype.collectLights = function (out) {
     if (n.level > 0 && !n.lock) out.push({ x: n.x, y: n.y * TILT - 40, r: 150 + (n.recoil || 0) * 90, a: 0.55 + (n.recoil || 0) * 0.5 });
   }
   if (this.muzzle) out.push({ x: this.muzzle.x, y: this.muzzle.y * TILT - 20, r: 140, a: 1.0, warm: true });
+  for (const t of this.torches) out.push({ x: t.x, y: t.y * TILT - 52, r: 230 * t.flicker, a: 0.9, warm: true });
   if (this.boss && this.boss.alive) out.push({ x: this.boss.x, y: this.boss.y * TILT - this.boss.radius * 2, r: 170, a: 0.7, cold: true });
   if (this.nova) out.push({ x: this.nova.x, y: this.nova.y * TILT, r: this.nova.radius * 1.4, a: this.nova.life / this.nova.maxLife, cold: true });
   for (const ring of this.rings) out.push({ x: ring.x, y: ring.y * TILT, r: ring.maxR * 0.8, a: (ring.life / ring.maxLife) * 0.6, warm: true });
@@ -812,28 +862,36 @@ Game.prototype.drawLighting = function (ctx, camX, camPY, w, h, zoom) {
   if (!this.lightingEnabled) return;
   const { c, scale } = this.lightLayer(w, h);
   const g = c.getContext('2d');
+  const lights = this.collectLights(this._lights || (this._lights = []));
+
+  // Additive, not subtractive. A subtractive layer left blobs of dark
+  // between the torch pools and read as smoke; this adds warm light on top
+  // of a fully visible arena instead. The faint base tint is only there so
+  // the lit pools have something to lift out of.
   g.setTransform(1, 0, 0, 1, 0, 0);
   g.globalCompositeOperation = 'source-over';
-  // Deep enough for the lights to matter, shallow enough that a horde in
-  // the dark is still a horde and not a rumour.
-  g.fillStyle = this.attract ? 'rgba(6,8,14,0.46)' : 'rgba(6,8,14,0.55)';
-  g.fillRect(0, 0, c.width, c.height);
-
-  const lights = this.collectLights(this._lights || (this._lights = []));
-  g.globalCompositeOperation = 'destination-out';
+  g.clearRect(0, 0, c.width, c.height);
+  g.globalCompositeOperation = 'lighter';
   for (const L of lights) {
     const sx = (L.x - camX) * scale, sy = (L.y - camPY) * scale, sr = L.r * scale;
     if (sx < -sr || sx > c.width + sr || sy < -sr || sy > c.height + sr) continue;
     const grad = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
-    grad.addColorStop(0, `rgba(0,0,0,${L.a})`);
-    grad.addColorStop(0.5, `rgba(0,0,0,${L.a * 0.55})`);
-    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    const tone = L.cold ? '140,200,255' : L.warm ? '255,170,80' : '190,210,230';
+    grad.addColorStop(0, `rgba(${tone},${0.32 * L.a})`);
+    grad.addColorStop(0.45, `rgba(${tone},${0.14 * L.a})`);
+    grad.addColorStop(1, `rgba(${tone},0)`);
     g.fillStyle = grad;
     g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
   }
 
   ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+  ctx.save();
+  // A whisper of dusk so the light has contrast, then the light itself.
+  ctx.fillStyle = this.attract ? 'rgba(10,10,18,0.10)' : 'rgba(10,10,18,0.12)';
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
   ctx.drawImage(c, 0, 0, w, h);
+  ctx.restore();
 };
 
 /* Bloom: emissive things drawn small, blurred, and added back over the
@@ -885,6 +943,10 @@ Game.prototype.drawGlow = function (ctx, camX, camPY, w, h, zoom) {
     g.fillStyle = 'rgba(255,170,70,0.9)';
     g.fillRect(m.x - 3, m.y * TILT - m.z - 3, 6, 6);
   }
+  for (const t of this.torches) {
+    g.fillStyle = 'rgba(255,160,50,0.95)';
+    g.beginPath(); g.ellipse(t.x, t.y * TILT - 62, 11 * t.flicker, 16 * t.flicker, 0, 0, TAU); g.fill();
+  }
   for (const ring of this.rings) {
     g.strokeStyle = `rgba(${ring.color},${clamp(ring.life / ring.maxLife, 0, 1)})`;
     g.lineWidth = 14;
@@ -906,8 +968,10 @@ Game.prototype.drawGlow = function (ctx, camX, camPY, w, h, zoom) {
 /* Per-arena colour grade plus the slam / boss-death screen flash. */
 Game.prototype.drawGrade = function (ctx, w, h) {
   if (this.lightingEnabled && this.arena.grade) {
+    ctx.globalAlpha = 0.7;
     ctx.fillStyle = this.arena.grade;
     ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = 1;
   }
   if (this.flashScreen > 0) {
     ctx.fillStyle = `rgba(255,240,210,${this.flashScreen * 0.55})`;

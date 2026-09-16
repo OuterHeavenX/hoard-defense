@@ -67,6 +67,20 @@
   game.lightingEnabled = lightingEnabled;
   const lightingBtn = document.getElementById('opt-lighting');
 
+  // Camera distance: persisted, adjustable from settings and from the HUD.
+  let zoom = 0.8;
+  try { const z = parseFloat(localStorage.getItem('hoard.zoom')); if (z >= 0.45 && z <= 1.3) zoom = z; } catch (e) { /* private mode */ }
+  const zoomSlider = document.getElementById('opt-zoom');
+  function applyZoom(z) {
+    zoom = game.setZoom(z);
+    zoomSlider.value = String(Math.round(zoom * 100));
+    try { localStorage.setItem('hoard.zoom', String(zoom)); } catch (e) { /* ignore */ }
+  }
+  applyZoom(zoom);
+  zoomSlider.addEventListener('input', () => applyZoom(Number(zoomSlider.value) / 100));
+  document.getElementById('btn-zoom-out').addEventListener('click', () => { game.audio.click(); applyZoom(zoom - 0.1); });
+  document.getElementById('btn-zoom-in').addEventListener('click', () => { game.audio.click(); applyZoom(zoom + 0.1); });
+
   const soundBtn = document.getElementById('opt-sound');
   const shakeBtn = document.getElementById('opt-shake');
   const volume = document.getElementById('opt-volume');

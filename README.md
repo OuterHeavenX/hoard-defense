@@ -110,9 +110,14 @@ that ordering is what sells the depth.
 
 ## Lighting
 
-The arena is night, lit by the fight. A darkness layer at quarter resolution has light
-cut out of it — the player's lamp, each turret as it fires, muzzle flashes, the boss's
-eyes, the pulse charge, the ground rings — and is composited over the world. A bloom
+The arena is torchlit. Flame poles stand around every arena's edge and beside every node
+— along the corridor walls between the stairs on The Ascent — each with a flickering
+three-tongue flame, a trail of embers and a warm light. A shallow darkness layer at
+quarter resolution has that light cut out of it, along with the player's lamp, each
+turret as it fires, muzzle flashes, the boss's eyes, the pulse charge and the ground
+rings, and is composited over the world. It is shallow on purpose: the arena is readable
+everywhere, and the light adds warmth and pools of brightness rather than being the only
+way to see. A bloom
 pass draws the emissive things small, blurs them and adds them back: bullets, turret
 heads, the boss's eyes, embers. Each arena carries a colour grade and an ambience — dust
 drifting across the Dust Bowl, embers rising in the Foundry and the Pit, mist along the

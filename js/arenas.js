@@ -12,6 +12,7 @@ const ARENAS = [
     width: 1900,
     height: 1350,
     ground: { base: '#2b2f26', fleck: [[40, 70], [44, 74], [34, 56]] },
+    tile: 'earth',
     border: 'rgba(210,225,180,0.35)',
     nodes: [
       [0, -285], [0, 285],
@@ -29,6 +30,7 @@ const ARENAS = [
     width: 1500,
     height: 1100,
     ground: { base: '#33261f', fleck: [[62, 48], [44, 34], [30, 24]] },
+    tile: 'ash',
     border: 'rgba(255,190,140,0.35)',
     nodes: [
       [-300, -190], [300, -190],
@@ -46,6 +48,7 @@ const ARENAS = [
     height: 3400,
     mode: 'gauntlet',
     ground: { base: '#262a2e', fleck: [[52, 74], [56, 78], [62, 86]] },
+    tile: 'stone',
     border: 'rgba(170,190,220,0.45)',
     // Offsets from centre (500, 1700): a node every ~600 up the corridor.
     nodes: [

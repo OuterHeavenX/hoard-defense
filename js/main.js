@@ -35,6 +35,9 @@
   Records.load();
 
   const game = new Game(canvas, hud);
+  // Art arrives after construction; rebuild the floor once it has, so the
+  // title's attract battle plays on the rendered tile rather than the fallback.
+  Assets.load(() => game.setArena(game.arena));
   const music = new Music(game.audio);
   window.__game = game;   // handy for tinkering from the console
   window.__music = music;

@@ -70,8 +70,11 @@ are carrying enough gold to finish the next tier.
 
 ```
 index.html        ready to play, no build step
+assets/           Blender-rendered towers and floor tiles, plus their manifest
+tools/            render_assets.py - the Blender scene, shaders and camera
 css/style.css     HUD, menus, overlays
 js/utils.js       math, formatting, the TILT projection constant
+js/assets.js      loads the rendered art, with procedural fallbacks
 js/arenas.js      stage definitions and unlock progress
 js/spatial.js     uniform grid for crowd queries
 js/input.js       keyboard + touch stick
@@ -121,6 +124,33 @@ from 112 to 158 bpm across the stage, hats come in once the crowd is real, the a
 once it's dense, and a second octave stacks on when the boss is out. The title screen
 gets a slow drone instead. Music ducks during pause and the perk draft, and has its own
 volume, separate from effects.
+
+## Rendered art
+
+The towers and floors are rendered in Blender and shipped as PNGs in `assets/`. The
+towers are round, crenellated sandstone drums in the Warwick Castle mould — arrow slits
+from tier 2, machicolated corbels from tier 3, a turret cap from tier 4 — and the stone
+is a procedural shader: a brick texture wrapped cylindrically for the coursing, noise for
+per-block weathering, both feeding a bump so the relief reads at sprite size.
+
+The camera is the important part. It is orthographic at the elevation whose sine is the
+game's `TILT` (0.58), which is exactly the angle at which a circle on the ground renders
+as the 0.58 ellipse the node pads already use — so a tower's round top sits flush on its
+pad with no fudging in the renderer. Each sprite carries its ground origin and walkway
+deck in `assets/manifest.js`, and the game mounts the gun on the deck from that.
+
+To re-render after changing the models or shaders:
+
+```
+pip install bpy          # Blender as a Python module, no GUI needed
+python3 tools/render_assets.py           # everything
+python3 tools/render_assets.py towers    # or just the towers / ground
+```
+
+Each tower takes about a second on CPU. The manifest is written as JavaScript rather
+than JSON because `fetch()` of a local file is blocked over `file://`, and the game has
+to keep opening straight from `index.html`. If an image fails to load, the renderer
+falls back to the procedural pedestal it drew before the art existed.
 
 ## Sound
 

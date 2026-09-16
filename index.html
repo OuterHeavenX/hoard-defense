@@ -18,6 +18,7 @@
       <div id="hp-fill"></div>
       <span id="hp-text">110 / 110</span>
     </div>
+    <div class="xp-bar"><div id="xp-fill"></div><span id="xp-text">LV 1</span></div>
     <div class="chips">
       <span class="chip gold-chip">&#9679; <b id="gold">0</b> gold</span>
       <span class="chip" id="dash">DASH</span>
@@ -82,6 +83,18 @@
     <button class="back primary">BACK</button>
   </div>
 
+  <div id="panel-stages" class="panel hidden">
+    <h2>CHOOSE YOUR GROUND</h2>
+    <div id="stage-list" class="stage-list"></div>
+    <button class="back primary">BACK</button>
+  </div>
+
+  <div id="panel-levelup" class="panel hidden levelup-panel">
+    <h2 id="levelup-title">LEVEL 2</h2>
+    <p class="tagline">Pick one.</p>
+    <div id="perk-list" class="perk-list"></div>
+  </div>
+
   <div id="panel-paused" class="panel hidden">
     <h2>PAUSED</h2>
     <button id="btn-resume" class="primary">RESUME</button>
@@ -98,11 +111,13 @@
 </div>
 
 <script src="js/utils.js"></script>
+<script src="js/arenas.js"></script>
 <script src="js/spatial.js"></script>
 <script src="js/input.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/sprites.js"></script>
 <script src="js/entities.js"></script>
+<script src="js/perks.js"></script>
 <script src="js/waves.js"></script>
 <script src="js/game.js"></script>
 <script src="js/render.js"></script>

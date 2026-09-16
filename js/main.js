@@ -11,13 +11,17 @@
     timer: document.getElementById('timer'),
     wave: document.getElementById('wave'),
     kills: document.getElementById('kills'),
-    dash: document.getElementById('dash')
+    dash: document.getElementById('dash'),
+    xpFill: document.getElementById('xp-fill'),
+    xpText: document.getElementById('xp-text')
   };
   const overlay = document.getElementById('overlay');
   const panels = {
     title: document.getElementById('panel-title'),
     howto: document.getElementById('panel-howto'),
     settings: document.getElementById('panel-settings'),
+    stages: document.getElementById('panel-stages'),
+    levelup: document.getElementById('panel-levelup'),
     paused: document.getElementById('panel-paused'),
     result: document.getElementById('panel-result')
   };
@@ -25,6 +29,7 @@
   const resultBody = document.getElementById('result-body');
 
   buildCharacterSprites();
+  Progress.load();
 
   const game = new Game(canvas, hud);
   window.__game = game;   // handy for tinkering from the console
@@ -87,7 +92,7 @@
     overlay.classList.toggle('hidden', name === null);
     overlay.classList.toggle('title-mode', name === 'title');
     // HUD belongs to a run, not to the menus stacked on the title screen.
-    const inMenus = name === 'title' || name === 'howto' || name === 'settings';
+    const inMenus = name === 'title' || name === 'howto' || name === 'settings' || name === 'stages';
     hud.root.classList.toggle('hidden', inMenus);
     for (const key in panels) panels[key].classList.toggle('hidden', key !== name);
   }
@@ -103,13 +108,39 @@
     showPanel('title');
   }
 
-  function startGame() {
-    game.start();
+  let currentArena = ARENAS[0];
+
+  function startGame(arena) {
+    currentArena = arena || currentArena;
+    game.start(currentArena);
     game.shakeEnabled = shakeEnabled;
     showPanel(null);
   }
 
-  document.getElementById('btn-play').addEventListener('click', () => { gesture(); startGame(); });
+  /* Rebuilt each time it opens so clears unlock without a reload. */
+  function buildStageList() {
+    const list = document.getElementById('stage-list');
+    list.innerHTML = '';
+    ARENAS.forEach((arena, i) => {
+      const unlocked = Progress.isUnlocked(i);
+      const cleared = !!Progress.cleared[arena.id];
+      const btn = document.createElement('button');
+      btn.className = 'stage';
+      btn.disabled = !unlocked;
+      const tag = cleared ? '<span class="tag cleared">CLEARED</span>'
+        : unlocked ? '<span class="tag">AVAILABLE</span>'
+        : '<span class="tag locked">CLEAR ' + ARENAS[i - 1].name + ' TO UNLOCK</span>';
+      btn.innerHTML = '<b>' + arena.name + '</b><i>' + arena.blurb + '</i>' + tag;
+      btn.addEventListener('click', () => { gesture(); startGame(arena); });
+      list.appendChild(btn);
+    });
+  }
+
+  document.getElementById('btn-play').addEventListener('click', () => {
+    gesture();
+    buildStageList();
+    showPanel('stages');
+  });
   document.getElementById('btn-howto').addEventListener('click', () => { gesture(); showPanel('howto'); });
   document.getElementById('btn-settings').addEventListener('click', () => { gesture(); showPanel('settings'); });
   for (const back of document.querySelectorAll('.back')) {
@@ -125,19 +156,46 @@
   document.getElementById('btn-quit').addEventListener('click', () => { gesture(); toTitle(); });
   document.getElementById('btn-title').addEventListener('click', () => { gesture(); toTitle(); });
 
+  const perkList = document.getElementById('perk-list');
+  const levelupTitle = document.getElementById('levelup-title');
+
+  function showDraft(choices) {
+    levelupTitle.textContent = 'LEVEL ' + game.level;
+    perkList.innerHTML = '';
+    for (const perk of choices) {
+      const held = game.perkStacks[perk.id] || 0;
+      const btn = document.createElement('button');
+      btn.className = 'perk';
+      btn.innerHTML = '<b>' + perk.name + '</b><i>' + perk.desc + '</i>' +
+        '<span class="stacks">' + (held ? 'OWNED ' + held + '/' + perk.max : 'NEW') + '</span>';
+      btn.addEventListener('click', () => {
+        game.audio.click();
+        game.choosePerk(perk);
+        showPanel(null);
+      });
+      perkList.appendChild(btn);
+    }
+    showPanel('levelup');
+  }
+
   function syncOverlay() {
     if (game.state === 'playing') return showPanel(null);
     if (game.state === 'paused') return showPanel('paused');
+    if (game.state === 'levelup') return;   // showDraft owns this panel
     if (game.state === 'menu') return showPanel(panel === null ? 'title' : panel);
 
     const won = game.state === 'won';
     resultTitle.textContent = won ? 'STAGE CLEARED' : 'OVERRUN';
     resultTitle.className = won ? 'win' : 'lose';
     const built = game.nodes.reduce((sum, n) => sum + n.level, 0);
-    const tail = `<b>${game.kills}</b> kills &middot; <b>${game.goldBanked}</b> gold collected &middot; <b>${built}</b> node levels built`;
+    const perks = Object.entries(game.perkStacks)
+      .map(([id, n]) => (PERKS.find((p) => p.id === id) || {}).name + (n > 1 ? ' x' + n : ''))
+      .join(', ') || 'none';
+    const tail = `<b>${Math.floor(game.goldBanked)}</b> gold &middot; <b>${built}</b> node levels &middot; level <b>${game.level}</b>` +
+      `<br><span class="perk-summary">${perks}</span>`;
     resultBody.innerHTML = won
-      ? `You held the line for the full 5:00.<br>${tail}`
-      : `The hoard broke through at <b>${formatTime(STAGE_DURATION - game.timeLeft)}</b>.<br>${tail}`;
+      ? `${game.arena.name} cleared. <b>${game.kills}</b> kills, and the boss went down.<br>${tail}`
+      : `The hoard broke through at <b>${formatTime(STAGE_DURATION - game.timeLeft)}</b> after <b>${game.kills}</b> kills.<br>${tail}`;
     if (won) game.audio.victory(); else game.audio.defeat();
     showPanel('result');
   }
@@ -152,19 +210,22 @@
     hud.hpFill.style.width = (pct * 100).toFixed(1) + '%';
     hud.hpFill.classList.toggle('low', pct < 0.35);
 
+    hud.xpFill.style.width = (clamp(game.xp / game.xpNeeded, 0, 1) * 100).toFixed(1) + '%';
+
     const signature = [
       Math.ceil(Math.max(0, p.hp)), Math.floor(p.gold), Math.ceil(game.timeLeft),
-      game.director.wave, game.kills, p.dashCooldown > 0
+      game.director.wave, game.kills, p.dashCooldown > 0, game.level
     ].join('|');
     if (signature === lastHud) return;
     lastHud = signature;
 
     hud.hpText.textContent = Math.ceil(Math.max(0, p.hp)) + ' / ' + p.maxHp;
     hud.gold.textContent = Math.floor(p.gold);
-    hud.timer.textContent = formatTime(game.timeLeft);
+    hud.timer.textContent = game.boss ? 'KILL IT' : formatTime(game.timeLeft);
     hud.wave.textContent = game.director.wave;
     hud.kills.textContent = game.kills;
     hud.dash.classList.toggle('cooling', p.dashCooldown > 0);
+    hud.xpText.textContent = 'LV ' + game.level;
   }
 
   // ----------------------------------------------------------------- loop
@@ -181,7 +242,7 @@
     const elapsed = Math.min((now - previous) / 1000, 0.25);
     previous = now;
 
-    if (game.input.takePause() && game.state !== 'menu') {
+    if (game.input.takePause() && game.state !== 'menu' && game.state !== 'levelup') {
       if (game.state === 'playing') game.state = 'paused';
       else if (game.state === 'paused') game.state = 'playing';
     }
@@ -195,6 +256,10 @@
         steps++;
       }
       if (steps === 5) accumulator = 0;
+
+      // Drafted between frames so a level-up never lands mid-step.
+      const choices = game.takeLevelUp();
+      if (choices) showDraft(choices);
     } else if (game.state === 'menu') {
       game.updateAttract(Math.min(elapsed, STEP * 3));
       accumulator = 0;

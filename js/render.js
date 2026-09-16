@@ -9,7 +9,7 @@
 
 const VIEW_MARGIN = 90;
 const ROW_HEIGHT = 20;              // depth-sort bucket granularity, world units
-const ROW_COUNT = Math.ceil(WORLD_H / ROW_HEIGHT) + 2;
+const ROW_COUNT = Math.ceil(MAX_WORLD_H / ROW_HEIGHT) + 2;
 
 Game.prototype.draw = function () {
   const ctx = this.ctx;
@@ -34,11 +34,15 @@ Game.prototype.draw = function () {
   ctx.translate(-camX, -camPY);
 
   this.drawGround(ctx);
+  this.drawDecals(ctx);
   this.drawNodePads(ctx);
   this.drawShadows(ctx, camX, camPY, w, h);
   this.drawSortedBodies(ctx, camX, camPY, w, h);
   this.drawBullets(ctx);
   this.drawParticles(ctx);
+  this.drawNova(ctx);
+  this.drawMuzzle(ctx);
+  this.drawNumbers(ctx);
 
   ctx.restore();
 
@@ -46,6 +50,7 @@ Game.prototype.draw = function () {
   this.drawVignette(ctx, screen.w, screen.h);
   this.drawBanner(ctx, screen.w, screen.h);
   this.drawMinimap(ctx, screen.w, screen.h);
+  this.drawBossBar(ctx, screen.w, screen.h);
   this.drawNodeMarkers(ctx, screen.w, screen.h);
   this.drawTouchStick(ctx);
 };
@@ -62,7 +67,7 @@ Game.prototype.drawGround = function (ctx) {
   ctx.restore();
 
   // Border drawn unsquashed so the line keeps an even weight all the way round.
-  ctx.strokeStyle = 'rgba(210,225,180,0.35)';
+  ctx.strokeStyle = this.arena.border;
   ctx.lineWidth = 5;
   ctx.strokeRect(0, 0, WORLD_W, WORLD_H * TILT);
 };
@@ -170,6 +175,7 @@ Game.prototype.drawSortedBodies = function (ctx, camX, camPY, w, h) {
 };
 
 Game.prototype.drawEnemy = function (ctx, e) {
+  if (e.type === 'boss') return this.drawBoss(ctx, e);
   const frame = characterFrame(e.type, e.anim | 0, e.flip, e.flash > 0.35);
   const k = e.scale;
   const fw = frame.w * k, fh = frame.h * k;
@@ -183,6 +189,78 @@ Game.prototype.drawEnemy = function (ctx, e) {
     ctx.fillRect(e.x - barW / 2, py - fh - 9, barW, 5);
     ctx.fillStyle = '#ff6b6b';
     ctx.fillRect(e.x - barW / 2, py - fh - 9, barW * pct, 5);
+  }
+};
+
+Game.prototype.drawBoss = function (ctx, b) {
+  const py = b.y * TILT;
+  const r = b.radius;
+  const height = r * 2.4;
+
+  // Telegraph ring: the wind-up before a slam or a charge.
+  if (b.telegraph > 0) {
+    const t = b.telegraph / 0.7;
+    ctx.strokeStyle = `rgba(255,120,90,${0.35 + t * 0.5})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.ellipse(b.x, py, 200 * (1.1 - t * 0.3), 200 * (1.1 - t * 0.3) * TILT, 0, 0, TAU);
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(b.x, py, r * 1.1, r * 0.5, 0, 0, TAU);
+  ctx.fill();
+
+  // The boss is under fire nonstop, so a colour-swap flash would leave it a
+  // featureless white slab. A translucent overlay reads as damage instead.
+  const body = b.def.color;
+  const dark = b.def.dark;
+  const bob = Math.sin(b.anim * 0.6) * r * 0.05;
+
+  const torso = () => {
+    ctx.beginPath();
+    ctx.moveTo(b.x - r, py);
+    ctx.lineTo(b.x + r, py);
+    ctx.lineTo(b.x + r * 0.62, py - height * 0.72 + bob);
+    ctx.lineTo(b.x - r * 0.62, py - height * 0.72 + bob);
+    ctx.closePath();
+  };
+
+  ctx.fillStyle = body;
+  torso();
+  ctx.fill();
+
+  // Plating stripes, so the silhouette is not one flat block.
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  for (let i = 1; i < 4; i++) {
+    const yy = py - height * 0.72 * (i / 4) + bob * (i / 4);
+    ctx.fillRect(b.x - r * (1 - i * 0.09), yy - 3, r * 2 * (1 - i * 0.09), 5);
+  }
+
+  ctx.fillStyle = dark;
+  ctx.beginPath();
+  ctx.arc(b.x, py - height * 0.85 + bob, r * 0.34, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = b.def.skin;
+  ctx.beginPath();
+  ctx.arc(b.x, py - height * 0.86 + bob, r * 0.26, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(b.x + s * r * 0.11, py - height * 0.88 + bob, r * 0.05, 0, TAU);
+    ctx.fill();
+  }
+
+  if (b.flash > 0) {
+    ctx.globalAlpha = Math.min(0.4, b.flash * 0.4);
+    ctx.fillStyle = '#ffffff';
+    torso();
+    ctx.fill();
+    ctx.globalAlpha = 1;
   }
 };
 
@@ -325,6 +403,85 @@ Game.prototype.drawParticles = function (ctx) {
     ctx.fillRect(p.x - p.size / 2, p.y * TILT - p.z - p.size / 2, p.size, p.size);
   }
   ctx.globalAlpha = 1;
+};
+
+/* Remains left where bodies fell. Purely cosmetic, but a battlefield that
+   accumulates damage sells the scale of the hoard better than anything else
+   on screen. */
+Game.prototype.drawDecals = function (ctx) {
+  const list = this.decals;
+  for (let i = 0; i < list.length; i++) {
+    const d = list[i];
+    ctx.globalAlpha = clamp(d.life / d.maxLife, 0, 1) * 0.42;
+    ctx.fillStyle = d.color;
+    ctx.beginPath();
+    ctx.ellipse(d.x, d.y * TILT, d.size, d.size * TILT, 0, 0, TAU);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+};
+
+Game.prototype.drawNova = function (ctx) {
+  const n = this.nova;
+  if (!n) return;
+  const t = clamp(n.life / n.maxLife, 0, 1);
+  const r = n.radius * (1.1 - t * 0.35);
+  ctx.strokeStyle = `rgba(42,212,200,${t})`;
+  ctx.lineWidth = 5 * t + 1;
+  ctx.beginPath();
+  ctx.ellipse(n.x, n.y * TILT, r, r * TILT, 0, 0, TAU);
+  ctx.stroke();
+};
+
+Game.prototype.drawMuzzle = function (ctx) {
+  const m = this.muzzle;
+  if (!m) return;
+  ctx.fillStyle = '#fff3c4';
+  ctx.beginPath();
+  ctx.arc(m.x, m.y * TILT - 20, 6, 0, TAU);
+  ctx.fill();
+};
+
+Game.prototype.drawNumbers = function (ctx) {
+  const list = this.numbers;
+  if (!list.length) return;
+  ctx.font = 'bold 17px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+  for (let i = 0; i < list.length; i++) {
+    const n = list[i];
+    ctx.globalAlpha = clamp(n.life / n.maxLife, 0, 1);
+    const y = n.y * TILT - n.z;
+    ctx.strokeText(n.text, n.x, y);
+    ctx.fillStyle = n.color;
+    ctx.fillText(n.text, n.x, y);
+  }
+  ctx.globalAlpha = 1;
+};
+
+/* The boss gets a banner bar rather than the little floating bar a brute
+   carries - it is the stage's win condition, so it reads at the top. */
+Game.prototype.drawBossBar = function (ctx, w, h) {
+  const b = this.boss;
+  if (!b || !b.alive || this.attract) return;
+  const barW = Math.min(520, w - 60);
+  const x = (w - barW) / 2;
+  const y = 78;
+
+  ctx.fillStyle = 'rgba(10,12,8,0.78)';
+  ctx.fillRect(x, y, barW, 20);
+  const pct = clamp(b.hp / b.maxHp, 0, 1);
+  ctx.fillStyle = '#c8496a';
+  ctx.fillRect(x + 2, y + 2, (barW - 4) * pct, 16);
+  ctx.strokeStyle = 'rgba(255,200,200,0.6)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, barW, 20);
+
+  ctx.font = 'bold 14px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffe9e9';
+  ctx.fillText(b.name, w / 2, y - 6);
 };
 
 Game.prototype.drawVignette = function (ctx, w, h) {

@@ -1,24 +1,32 @@
 /* Core simulation + renderer for the Hoard Defense mockup stage. */
 'use strict';
 
-const WORLD_W = 1900;
-const WORLD_H = 1350;
+let WORLD_W = 1900;          // set from the active arena
+let WORLD_H = 1350;
+const MAX_WORLD_H = 2000;    // ceiling used to size fixed-length buffers
 const MAX_ENEMIES = 1400;
+const MAX_BRUTES = 9;          // brutes are set-pieces, not a crowd
 const MAX_COINS = 420;
 const MAX_PARTICLES = 420;
+const MAX_DECALS = 260;        // fading remains left on the battlefield
+const MAX_NUMBERS = 40;        // floating damage numbers, big hits only
 const NEIGHBOUR_VISITS = 20;   // bodies examined per enemy per frame (hard cap)
+const BOSS_AT = 42;            // seconds left when the boss walks in
 const DEPOSIT_RATE = 420;      // gold/second - fast enough that a run-through pays
 
 class Game {
   constructor(canvas, hud) {
+    this.arena = ARENAS[0];
+    WORLD_W = this.arena.width;
+    WORLD_H = this.arena.height;
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d', { alpha: false });
     this.hud = hud;
     this.input = new Input(canvas);
     this.audio = new Audio();
     this.shakeEnabled = true;
-    this.grid = new SpatialGrid(WORLD_W + 400, WORLD_H + 400, 48);
-    this.ground = makeGroundPattern(this.ctx);
+    this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
+    this.ground = makeGroundPattern(this.ctx, this.arena.ground);
     this.screen = { w: 960, h: 600 };   // css pixels
     this.view = { w: 960, h: 600 };     // world units visible
     this.dpr = 1;
@@ -29,7 +37,7 @@ class Game {
 
   reset() {
     this.player = new Player(WORLD_W / 2, WORLD_H / 2);
-    this.director = new WaveDirector();
+    this.director = new WaveDirector(this.arena);
     this.enemies = [];
     this.enemyPool = [];
     this.bullets = [];
@@ -41,6 +49,30 @@ class Game {
     this.nodes = this.buildNodes();
     this.kills = 0;
     this.goldBanked = 0;
+    this.decals = [];
+    this.decalPool = [];
+    this.numbers = [];
+    this.numberPool = [];
+    this.boss = null;
+    this.bruteCount = 0;
+    this.hitStop = 0;
+    this.nova = null;
+    this.muzzle = null;
+    this.pendingLevels = 0;
+
+    // Perk state. Every perk lands on one of these.
+    this.level = 1;
+    this.xp = 0;
+    this.xpNeeded = xpForLevel(1);
+    this.perkStacks = {};
+    this.perkChoices = null;
+    this.goldMul = 1;
+    this.depositMul = 1;
+    this.turretDamageMul = 1;
+    this.turretRateMul = 1;
+    this.scavenger = 0;
+    this.novaLevel = 0;
+    this.novaTimer = 0;
     this.shake = 0;
     this.banner = null;
     this.camera = { x: this.player.x, y: this.player.y };
@@ -54,15 +86,22 @@ class Game {
 
   buildNodes() {
     const cx = WORLD_W / 2, cy = WORLD_H / 2;
-    const layout = [
-      [cx, cy - 285], [cx, cy + 285],
-      [cx - 355, cy - 115], [cx + 355, cy - 115],
-      [cx - 355, cy + 115], [cx + 355, cy + 115]
-    ];
-    return layout.map(([x, y]) => new DefenseNode(x, y));
+    return this.arena.nodes.map(([dx, dy]) => new DefenseNode(cx + dx, cy + dy));
   }
 
-  start() {
+  /* Swap the active stage. Must happen before reset() so the node layout,
+     ground palette and camera limits all come from the right arena. */
+  setArena(arena) {
+    this.arena = arena;
+    WORLD_W = arena.width;
+    WORLD_H = arena.height;
+    this.ground = makeGroundPattern(this.ctx, arena.ground);
+    this.grid = new SpatialGrid(WORLD_W + 400, MAX_WORLD_H + 400, 48);
+    this.resize(this.screen.w, this.screen.h, this.dpr);
+  }
+
+  start(arena) {
+    if (arena) this.setArena(arena);
     this.reset();
     this.audio.suspended = false;
     this.state = 'playing';
@@ -141,6 +180,10 @@ class Game {
 
   spawnEnemy(type, x, y) {
     if (this.enemies.length >= MAX_ENEMIES) return null;
+    if (type === 'brute') {
+      if (this.bruteCount >= MAX_BRUTES) return null;
+      this.bruteCount++;
+    }
     const e = (this.enemyPool.pop() || new Enemy()).reset(type, x, y, this.director.hpScale);
     this.enemies.push(e);
     return e;
@@ -200,12 +243,21 @@ class Game {
   update(dt) {
     if (this.state !== 'playing') return;
 
+    // Hit stop: a couple of frozen frames make a heavy kill land.
+    if (this.hitStop > 0) {
+      this.hitStop -= dt;
+      this.updateParticles(dt);
+      this.updateNumbers(dt);
+      return;
+    }
+
     this.input.update();
     this.focus.x = this.player.x;
     this.focus.y = this.player.y;
     this.director.update(dt, this);
     this.timeLeft -= dt;
 
+    this.updateBoss(dt);
     this.updatePlayer(dt);
     this.rebuildGrid();
     this.updateEnemies(dt);
@@ -213,6 +265,8 @@ class Game {
     this.updateBullets(dt);
     this.updateCoins(dt);
     this.updateParticles(dt);
+    this.updateDecals(dt);
+    this.updateNumbers(dt);
     this.updateCamera(dt);
 
     if (this.banner) {
@@ -221,8 +275,13 @@ class Game {
     }
     this.shake = Math.max(0, this.shake - dt * 22);
 
-    if (this.player.hp <= 0) this.state = 'lost';
-    else if (this.timeLeft <= 0) { this.timeLeft = 0; this.state = 'won'; }
+    if (this.player.hp <= 0) {
+      this.state = 'lost';
+    } else if (this.timeLeft <= 0) {
+      // The clock running out no longer ends the stage - the boss does.
+      this.timeLeft = 0;
+      if (!this.boss) this.spawnBoss();
+    }
   }
 
   updatePlayer(dt) {
@@ -250,6 +309,24 @@ class Game {
     p.x = clamp(p.x + p.vx * dt, p.radius, WORLD_W - p.radius);
     p.y = clamp(p.y + p.vy * dt, p.radius, WORLD_H - p.radius);
     p.anim += Math.hypot(p.vx, p.vy) * dt * 0.07;
+
+    if (this.novaLevel > 0) {
+      this.novaTimer -= dt;
+      if (this.novaTimer <= 0) {
+        this.novaTimer = Math.max(1.4, 4 - this.novaLevel * 0.6);
+        const radius = 120 + this.novaLevel * 35;
+        this.splash(p.x, p.y, radius, 12 + this.novaLevel * 8);
+        this.nova = { x: p.x, y: p.y, radius, life: 0.35, maxLife: 0.35 };
+      }
+    }
+    if (this.nova) {
+      this.nova.life -= dt;
+      if (this.nova.life <= 0) this.nova = null;
+    }
+    if (this.muzzle) {
+      this.muzzle.life -= dt;
+      if (this.muzzle.life <= 0) this.muzzle = null;
+    }
 
     // Auto-fire at whatever is closest; aim drives the sprite's facing too.
     // The target is cached between shots: nearestEnemy is a full-crowd scan.
@@ -360,16 +437,35 @@ class Game {
     }
   }
 
-  damageEnemy(e, amount) {
+  damageEnemy(e, amount, knockX, knockY) {
     if (!e.alive) return;
     e.hp -= amount;
     e.flash = 1;
+
+    // Only the chunky bodies get knockback and a number; doing it for every
+    // grunt would be noise on screen and a needless cost.
+    if (e.type === 'boss' || e.type === 'brute') {
+      this.addNumber(e.x, e.y, Math.round(amount), e.type === 'boss' ? '#ffd34d' : '#ffe9a8');
+      if (knockX !== undefined && e.type !== 'boss') {
+        e.x += knockX * 3;
+        e.y += knockY * 3;
+      }
+    } else if (knockX !== undefined) {
+      e.x += knockX * 6;
+      e.y += knockY * 6;
+    }
+
     if (e.hp > 0) return;
 
     e.alive = false;
+    if (e.type === 'brute') this.bruteCount--;
     this.kills++;
     this.audio.kill();
+    this.addXp(e.type === 'boss' ? 70 : e.type === 'brute' ? 14 : e.type === 'tank' ? 4 : 1);
+
     const d = e.def;
+    this.addDecal(e.x, e.y, e.radius * e.scale, d.dark);
+    if (e.type === 'boss') this.addDecal(e.x, e.y, e.radius * 2.2, d.dark);
     this.burst(e.x, e.y, e.type === 'brute' ? 24 : 5, d.dark, e.type === 'brute' ? 260 : 120);
     for (let i = 0; i < d.coins; i++) {
       this.spawnCoin(e.x + rand(-8, 8), e.y + rand(-8, 8), d.value);
@@ -377,8 +473,58 @@ class Game {
     if (e.type === 'brute') {
       this.spawnCoin(e.x, e.y, 18, 'health');
       this.shake = Math.min(16, this.shake + 6);
+      this.hitStop = Math.max(this.hitStop, 0.05);
       this.audio.bruteKill();
     }
+    if (e.type === 'boss') this.spawnCoin(e.x, e.y, 60, 'health');
+  }
+
+  addXp(amount) {
+    if (this.attract) return;
+    this.xp += amount;
+    while (this.xp >= this.xpNeeded) {
+      this.xp -= this.xpNeeded;
+      this.level++;
+      this.xpNeeded = xpForLevel(this.level);
+      this.pendingLevels = (this.pendingLevels || 0) + 1;
+    }
+  }
+
+  /* Called by the loop between frames so the draft never interrupts a step. */
+  takeLevelUp() {
+    if (!this.pendingLevels || this.state !== 'playing') return null;
+    this.pendingLevels--;
+    this.perkChoices = rollPerks(this, 3);
+    if (!this.perkChoices.length) return null;   // everything maxed
+    this.state = 'levelup';
+    this.audio.upgrade();
+    return this.perkChoices;
+  }
+
+  choosePerk(perk) {
+    applyPerk(this, perk);
+    this.perkChoices = null;
+    this.state = 'playing';
+  }
+
+  addDecal(x, y, size, color) {
+    if (this.decals.length >= MAX_DECALS) {
+      // Recycle the oldest rather than skipping, so remains keep accumulating
+      // where the fighting actually is.
+      this.decalPool.push(this.decals.shift());
+    }
+    const d = this.decalPool.pop() || {};
+    d.x = x; d.y = y; d.size = size * rand(0.8, 1.3);
+    d.life = 14; d.maxLife = 14; d.color = color;
+    this.decals.push(d);
+  }
+
+  addNumber(x, y, text, color) {
+    if (this.numbers.length >= MAX_NUMBERS) return;
+    const n = this.numberPool.pop() || {};
+    n.x = x; n.y = y; n.z = 34; n.vz = 70;
+    n.text = text; n.color = color; n.life = 0.85; n.maxLife = 0.85;
+    this.numbers.push(n);
   }
 
   /* Radial damage used by upgraded turrets. Grid-bounded: upgraded nodes fire
@@ -389,6 +535,70 @@ class Game {
       if (e.alive && dist2(x, y, e.x, e.y) < r2) this.damageEnemy(e, damage);
     });
     this.burst(x, y, 8, '#ffb36b', 200);
+  }
+
+  spawnBoss() {
+    if (this.boss) return;
+    const p = this.player;
+    const a = rand(0, TAU);
+    const x = clamp(p.x + Math.cos(a) * 520, 60, WORLD_W - 60);
+    const y = clamp(p.y + Math.sin(a) * 420, 60, WORLD_H - 60);
+    this.boss = new Boss(this.arena.boss, x, y, 1 + this.director.progress * 0.5);
+    this.enemies.push(this.boss);
+    this.announce(this.boss.name, '#ff7a6b');
+    this.audio.horde();
+    this.shake = 18;
+  }
+
+  updateBoss(dt) {
+    // Spawns in the last stretch so the run builds to it rather than stopping.
+    if (!this.boss && this.timeLeft <= BOSS_AT && !this.attract) this.spawnBoss();
+    const b = this.boss;
+    if (!b) return;
+
+    if (!b.alive) {
+      this.boss = null;
+      this.state = 'won';
+      Progress.markCleared(this.arena.id);
+      this.shake = 26;
+      this.hitStop = 0.28;
+      this.burst(b.x, b.y, 60, b.def.dark, 360);
+      return;
+    }
+
+    b.telegraph = Math.max(0, b.telegraph - dt);
+    b.attackTimer -= dt;
+
+    if (b.def.attack === 'charge' && b.charging > 0) {
+      b.charging -= dt;
+      if (b.charging <= 0) b.speed = b.def.speed;
+    } else if (b.attackTimer <= 0 && b.telegraph <= 0) {
+      b.telegraph = 0.7;                       // wind-up the player can read
+      b.attackTimer = b.def.attackInterval;
+      b.pendingAttack = true;
+    } else if (b.pendingAttack && b.telegraph <= 0) {
+      b.pendingAttack = false;
+      if (b.def.attack === 'slam') {
+        this.splash(b.x, b.y, 200, 26);
+        this.burst(b.x, b.y, 34, '#ffb36b', 280);
+        this.shake = 16;
+        for (let i = 0; i < 12; i++) {
+          const a = rand(0, TAU);
+          this.spawnEnemy('grunt', b.x + Math.cos(a) * 90, b.y + Math.sin(a) * 90);
+        }
+        if (dist2(b.x, b.y, this.player.x, this.player.y) < 200 * 200 && this.player.hurt(24)) {
+          this.audio.hurt();
+        }
+      } else {
+        b.speed = b.def.speed * 3.4;           // charge
+        b.charging = 1.5;
+        for (let i = 0; i < 6; i++) {
+          const a = rand(0, TAU);
+          this.spawnEnemy('runner', b.x + Math.cos(a) * 80, b.y + Math.sin(a) * 80);
+        }
+      }
+      this.audio.bruteKill();
+    }
   }
 
   updateNodes(dt) {
@@ -403,7 +613,7 @@ class Game {
       if (dist2(p.x, p.y, node.x, node.y) < node.padRadius * node.padRadius) {
         this.activeNode = node;
         if (p.gold >= 1 && !node.maxed) {
-          const want = Math.min(p.gold, DEPOSIT_RATE * dt);
+          const want = Math.min(p.gold, DEPOSIT_RATE * this.depositMul * dt);
           const spent = node.feed(want);
           p.gold -= spent;
           if (spent > 0) this.audio.deposit();
@@ -425,14 +635,14 @@ class Game {
       node.angle = aimTowards(node.angle, aim, dt * 7);
       if (node.fireTimer > 0) continue;
 
-      node.fireTimer = st.interval;
+      node.fireTimer = st.interval * this.turretRateMul;
       this.audio.turretShoot();
       for (let i = 0; i < st.barrels; i++) {
         const off = (i - (st.barrels - 1) / 2) * 0.16;
         const a = node.angle + off;
         this.spawnBullet(
           node.x + Math.cos(a) * 22, node.y + Math.sin(a) * 22,
-          Math.cos(a), Math.sin(a), 580, st.damage,
+          Math.cos(a), Math.sin(a), 580, st.damage * this.turretDamageMul,
           { life: st.range / 580 + 0.1, splash: st.splash, radius: 4.5, color: '#8fd8ff', z: 26 }
         );
       }
@@ -460,7 +670,8 @@ class Game {
             consumed = true;
             return;
           }
-          this.damageEnemy(e, b.damage);
+          const bl = Math.hypot(b.vx, b.vy) || 1;
+          this.damageEnemy(e, b.damage, b.vx / bl, b.vy / bl);
           if (b.pierce > 0 && b.hits.length < b.pierce) b.hits.push(e);
           else consumed = true;
         });
@@ -481,6 +692,7 @@ class Game {
     for (let i = list.length - 1; i >= 0; i--) {
       if (list[i].alive) continue;
       const e = list[i];
+      if (e.type === 'boss') { list[i] = list[list.length - 1]; list.pop(); continue; }
       list[i] = list[list.length - 1];
       list.pop();
       this.enemyPool.push(e);
@@ -490,7 +702,7 @@ class Game {
   updateCoins(dt) {
     const p = this.player;
     const list = this.coins;
-    const magnet = 110, magnet2 = magnet * magnet;
+    const magnet = p.magnetRadius, magnet2 = magnet * magnet;
 
     for (let i = list.length - 1; i >= 0; i--) {
       const c = list[i];
@@ -518,8 +730,10 @@ class Game {
           p.heal(c.value);
           this.burst(c.x, c.y, 8, '#7bf0a6', 120);
         } else {
-          p.gold += c.value;
-          this.goldBanked += c.value;
+          const worth = c.value * this.goldMul;
+          p.gold += worth;
+          this.goldBanked += worth;
+          if (this.scavenger) p.heal(this.scavenger);
           this.audio.coin();
         }
         c.life = 0;
@@ -555,6 +769,34 @@ class Game {
     }
   }
 
+  updateDecals(dt) {
+    const list = this.decals;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const d = list[i];
+      d.life -= dt;
+      if (d.life <= 0) {
+        list[i] = list[list.length - 1];
+        list.pop();
+        this.decalPool.push(d);
+      }
+    }
+  }
+
+  updateNumbers(dt) {
+    const list = this.numbers;
+    for (let i = list.length - 1; i >= 0; i--) {
+      const n = list[i];
+      n.life -= dt;
+      n.z += n.vz * dt;
+      n.vz -= 120 * dt;
+      if (n.life <= 0) {
+        list[i] = list[list.length - 1];
+        list.pop();
+        this.numberPool.push(n);
+      }
+    }
+  }
+
   updateCamera(dt) {
     const p = this.player;
     this.camera.x = damp(this.camera.x, p.x, 9, dt);
@@ -580,15 +822,17 @@ function aimTowards(current, target, step) {
 }
 
 /* Pre-rendered dirt tile so the ground costs one fill per frame. */
-function makeGroundPattern(ctx) {
+function makeGroundPattern(ctx, palette) {
+  const pal = palette || { base: '#2b2f26', fleck: [[40, 70], [44, 74], [34, 56]] };
   const size = 128;
   const c = document.createElement('canvas');
   c.width = c.height = size;
   const g = c.getContext('2d');
-  g.fillStyle = '#2b2f26';
+  g.fillStyle = pal.base;
   g.fillRect(0, 0, size, size);
+  const [r, gr, b] = pal.fleck;
   for (let i = 0; i < 140; i++) {
-    g.fillStyle = `rgba(${randInt(40, 70)},${randInt(44, 74)},${randInt(34, 56)},0.9)`;
+    g.fillStyle = `rgba(${randInt(r[0], r[1])},${randInt(gr[0], gr[1])},${randInt(b[0], b[1])},0.9)`;
     g.fillRect(rand(0, size), rand(0, size), rand(2, 7), rand(2, 7));
   }
   g.strokeStyle = 'rgba(0,0,0,0.22)';

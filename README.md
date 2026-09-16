@@ -1,9 +1,9 @@
 # Hoard Defense
 
-A five-minute survival stage rendered in 2.5D: one controllable soldier, thousands of
-weak enemies, and six gold-hungry defense nodes. Enemies die in a hit or two, but they
-never stop coming — the only way to keep up is to hoover up the gold they drop and pour
-it into the nodes ringing the arena.
+Two five-minute survival stages rendered in 2.5D: one controllable soldier, thousands of
+weak enemies, and a ring of gold-hungry defense nodes. Enemies die in a hit or two, but
+they never stop coming — the only way to keep up is to hoover up the gold they drop and
+pour it into the nodes. Survive to the end of the clock and the stage boss walks in.
 
 **To play:** clone the repo and open `index.html` — no build step, no server, no
 dependencies.
@@ -44,6 +44,7 @@ Pausing offers resume, restart and quit to title.
 | Move | `WASD` / arrow keys | drag anywhere (virtual stick) |
 | Dash | `Space` / `Shift` | — |
 | Pause | `P` / `Esc` | — |
+| Pick a perk | click / tap a card | click / tap a card |
 | Fire | automatic | automatic |
 
 Dash gives a short burst of speed plus brief invulnerability on a 2.4s cooldown. It is
@@ -71,11 +72,13 @@ are carrying enough gold to finish the next tier.
 index.html        ready to play, no build step
 css/style.css     HUD, menus, overlays
 js/utils.js       math, formatting, the TILT projection constant
+js/arenas.js      stage definitions and unlock progress
 js/spatial.js     uniform grid for crowd queries
 js/input.js       keyboard + touch stick
 js/audio.js       synthesised sound effects (no audio files)
 js/sprites.js     procedural character sprite baking
-js/entities.js    player, enemies, bullets, coins, nodes
+js/entities.js    player, enemies, bosses, bullets, coins, nodes
+js/perks.js       level-up perk draft
 js/waves.js       the 5 minute wave director
 js/game.js        simulation
 js/render.js      2.5D renderer
@@ -98,6 +101,14 @@ that ordering is what sells the depth.
   top of the figure standing in front of it.
 - **The floor is the only thing drawn in squashed space**, so its texture foreshortens
   with the plane instead of sliding across it.
+
+## Feel
+
+Small things that make a hit land: hit stop freezes the simulation for a few frames on a
+brute or boss kill, bullets shove bodies backwards, damage numbers float off the big
+targets only (doing it for every grunt would be noise and needless cost), muzzle flashes,
+and corpse decals that accumulate where the fighting actually is — a battlefield that
+visibly wears down sells the scale of the hoard better than anything else on screen.
 
 ## Sound
 
@@ -134,6 +145,9 @@ Most of the feel lives in a few constants:
 - `js/entities.js` — `ENEMY_TYPES`, `DefenseNode.COSTS`, node `stats`
 - `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
 - `js/sprites.js` — the `looks` table: size, colour and pose per character
+- `js/arenas.js` — stage definitions; add an entry to add a stage
+- `js/perks.js` — the perk table and `xpForLevel()`
+- `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern
 
 The character art is deliberately placeholder. `bakeBiped()` is the only thing that
 draws a figure, so swapping in real sprite sheets means replacing that one function —

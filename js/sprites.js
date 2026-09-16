@@ -172,7 +172,11 @@ function characterFrame(type, frame, flip, flash) {
     return f;
   }
   const bank = flash ? characterSprites[type].flash : characterSprites[type].normal;
-  const p = bank[flip ? 1 : 0][frame % WALK_FRAMES];
+  // The index is folded rather than plain modulo: a stray negative frame
+  // reads off the end of the row, and one such crash was seen in testing
+  // while the rendered art was still loading and this path was live. The
+  // source of the negative was never pinned down; this makes it unreachable.
+  const p = bank[flip ? 1 : 0][((frame % WALK_FRAMES) + WALK_FRAMES) % WALK_FRAMES];
   if (p.ox === undefined) { p.ox = p.w / 2; p.oy = p.h; }
   return p;
 }

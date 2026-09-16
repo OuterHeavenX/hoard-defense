@@ -283,3 +283,112 @@ class DefenseNode {
     return spent;
   }
 }
+
+/* A buyable wall. Built the same way as a turret - stand on it and pour -
+   but it spends itself on shaping where the horde walks instead of on
+   shooting it. A line is made of short segments with their own health, so
+   the horde chews holes in it rather than flipping it off in one go, and
+   the hole is where the next wave funnels. */
+class Barricade {
+  static COSTS = [80, 190, 360];
+  static MAX_LEVEL = Barricade.COSTS.length;
+  // Health per segment per tier. A fence buys seconds, a rampart buys a
+  // horde; neither buys the whole run.
+  static SEG_HP = [0, 190, 460, 1000];
+
+  constructor(x, y, len, vertical, segPx) {
+    this.kind = 'barricade';
+    this.x = x; this.y = y;            // centre of the run
+    this.len = len;
+    this.vertical = !!vertical;
+    this.level = 0;
+    this.invested = 0;
+    this.pulse = 0;
+    this.recentFeed = 0;
+    // Building is done at one spot in the middle of the run, not anywhere
+    // along it. A pad the length of the wall meant gold drained into it just
+    // from crossing the line, which is not a decision anybody made.
+    this.padRadius = 78;
+    this.seg = segPx;
+    this.count = Math.max(2, Math.round(len / segPx));
+    this.span = this.count * this.seg;
+    this.hp = new Float32Array(this.count);
+    this.hit = new Float32Array(this.count);   // flash timer per segment
+    // Half the wall's thickness, for the push-out. Kept narrow so a body
+    // that is already past the line is not yanked back through it.
+    this.half = 13;
+  }
+
+  get maxed() { return this.level >= Barricade.MAX_LEVEL; }
+  get nextCost() { return this.maxed ? 0 : Barricade.COSTS[this.level]; }
+  get segHp() { return Barricade.SEG_HP[this.level]; }
+  get start() { return (this.vertical ? this.y : this.x) - this.span / 2; }
+  /* Where the player stands to build. */
+  get padX() { return this.x; }
+  get padY() { return this.y; }
+
+  /* Standing segments, for the HUD and for deciding whether a run still
+     counts as a wall at all. */
+  get standing() {
+    let n = 0;
+    for (let i = 0; i < this.count; i++) if (this.hp[i] > 0) n++;
+    return n;
+  }
+
+  segCentre(i) {
+    const at = this.start + (i + 0.5) * this.seg;
+    return this.vertical ? { x: this.x, y: at } : { x: at, y: this.y };
+  }
+
+  /* Returns how much gold was actually consumed. A run that is standing but
+     damaged takes gold as repair before it will take another tier, so the
+     player is never forced to overbuild to patch a hole. */
+  feed(amount) {
+    this.recentFeed = 0.25;
+    if (this.level > 0) {
+      const full = this.segHp;
+      for (let i = 0; i < this.count; i++) {
+        if (this.hp[i] >= full) continue;
+        // Repair is priced off the tier: a whole segment back for a fifth of
+        // what the tier cost to raise.
+        const rate = full / (Barricade.COSTS[this.level - 1] * 0.2);
+        const need = (full - this.hp[i]) / rate;
+        const spent = Math.min(amount, need);
+        this.hp[i] += spent * rate;
+        if (spent > 0) return spent;
+      }
+    }
+    if (this.maxed) return 0;
+    const need = this.nextCost - this.invested;
+    const spent = Math.min(amount, need);
+    this.invested += spent;
+    if (this.invested >= this.nextCost) {
+      this.invested = 0;
+      this.level++;
+      this.pulse = 1;
+      this.hp.fill(this.segHp);
+    }
+    return spent;
+  }
+
+  /* Which segment covers this point, or -1. `slack` widens the run's ends so
+     a body cannot squeeze around a corner it is standing on. */
+  segmentAt(x, y, slack) {
+    if (this.level === 0) return -1;
+    const along = this.vertical ? y : x;
+    const across = this.vertical ? x - this.x : y - this.y;
+    if (Math.abs(across) > this.half + slack) return -1;
+    const i = Math.floor((along - this.start) / this.seg);
+    if (i < 0 || i >= this.count || this.hp[i] <= 0) return -1;
+    return i;
+  }
+
+  damageSegment(i, amount) {
+    if (this.hp[i] <= 0) return false;
+    this.hp[i] -= amount;
+    this.hit[i] = 1;
+    if (this.hp[i] > 0) return false;
+    this.hp[i] = 0;
+    return true;      // this one just fell
+  }
+}

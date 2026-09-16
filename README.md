@@ -60,6 +60,28 @@ the main way out of a closing pocket.
 | **Tank** (blue) | Slower, takes a few hits, drops more gold. |
 | **Brute** (pink) | Rare, huge health pool, hits hard, drops a pile of gold and a medkit. |
 
+## Walls
+
+Gold has somewhere else to go. Each arena has build spots on the ground where
+a wall can be raised, and a wall is the only thing in the game that changes
+where the horde walks rather than how fast it dies.
+
+A run goes up in three tiers - palisade, stone wall, rampart - and is made of
+short segments with their own health. Bodies pressed against it chew through
+a segment at a time, so a wall does not flip off whole: it develops a hole,
+and the hole is where the next wave funnels. Standing at the build spot with
+gold patches the holes before it will pay for the next tier, so a damaged run
+never has to be overbuilt to be repaired. A boss walks through and takes the
+wall with him.
+
+Nothing about the funnel is computed. Only the component of a body's movement
+that crosses the line is cancelled, so the crowd slides along the wall and
+pours around its end or through a gap on its own. Placing the nodes' kill
+zone over that gap is the whole of the strategy.
+
+Walls are priced against turrets on purpose. Raising one run to the top costs
+about two thirds of maxing a node, and the gold only comes from kills.
+
 ## Defense nodes
 
 Six pads ring the arena. Feeding one costs 35 / 80 / 150 / 260 / 420 gold across five
@@ -72,7 +94,8 @@ are carrying enough gold to finish the next tier.
 ```
 index.html        ready to play, no build step
 assets/           Blender-rendered towers, floors, golem and character frames, plus manifests
-packs/            the Craftpix model packs, as shipped - source for the tower families
+packs/            the Craftpix model packs, as shipped - source for the towers,
+                  the walls and the arena dressing
 models/           golem.blend and characters.blend - the rigged, animated figures
 tools/            the Blender scenes: render_assets.py, build_golem.py,
                   build_characters.py, build_pack_towers.py
@@ -220,6 +243,24 @@ A family tower carries its own modelled weapon, so the game leaves off the
 procedural barrels and the lamp it draws on a plain turret, and lights the
 ground only when the tower fires.
 
+### The walls and the dressing
+
+The same two fortress packs supply the barricades and the props that dress
+the arenas - braziers, an arsenal, barracks, the gate the horde pours
+through. `tools/build_pack_props.py` renders them, taking the single tileable
+pieces out of each pack's parts folder rather than the assembled runs, so a
+wall can be any length.
+
+Each barricade piece is rendered twice, once running east-west and once
+north-south, because in this projection a wall seen broadside and a wall
+receding from the camera are not the same picture. The receding one needed
+two corrections that the broadside one did not: it is thickened, because a
+wall pointing away from the camera shows almost nothing but its end and
+renders as a stick, and it gets its own key light, because its long faces
+turn east and west where the scene's usual sun never reaches them. Even so
+it reads as the plainer of the two, which is a limit of the projection rather
+than of the art.
+
 ### The characters
 
 The player, the four enemy types and the Juggernaut are built the same way in
@@ -244,6 +285,8 @@ python3 tools/build_golem.py             # rebuild, re-rig and re-render the gol
 python3 tools/build_characters.py        # rebuild, re-rig and re-render the characters
 python3 tools/build_pack_towers.py       # every tower family
 python3 tools/build_pack_towers.py orc   # or just these
+python3 tools/build_pack_props.py        # walls and camp dressing
+python3 tools/build_pack_props.py walls  # or just the barricades
 ```
 
 Each tower takes about a second on CPU; the floor tiles are 512px and take a minute
@@ -306,8 +349,11 @@ Most of the feel lives in a few constants:
 - `js/entities.js` — `ENEMY_TYPES`, `DefenseNode.COSTS`, node `stats`
 - `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
 - `js/sprites.js` — the `looks` table: size, colour and pose per character
-- `js/arenas.js` — stage definitions; add an entry to add a stage, and
-  `towers` picks which family that stage builds
+- `js/arenas.js` — stage definitions; add an entry to add a stage. `towers`
+  picks the turret family, `walls` the fortress the barricades come from, and
+  `barricades` and `props` place the wall runs and the dressing
+- `js/entities.js` — `Barricade.COSTS` and `Barricade.SEG_HP`, what a wall
+  costs and how long it stands
 - `js/perks.js` — the perk table and `xpForLevel()`
 - `js/entities.js` — `BOSS_TYPES` for boss stats and attack pattern; the `Ally` class
 - `js/game.js` — `LOCK_COST`, what the Juggernaut's cage takes to open

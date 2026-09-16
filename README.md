@@ -43,7 +43,7 @@ Pausing offers resume, restart and quit to title.
 | --- | --- | --- |
 | Move | `WASD` / arrow keys | drag anywhere (virtual stick) |
 | Dash | `Space` / `Shift` | — |
-| Pause | `P` / `Esc` | — |
+| Pause | `P` / `Esc` or the II button | the II button |
 | Pick a perk | click / tap a card | click / tap a card |
 | Fire | automatic | automatic |
 
@@ -108,9 +108,23 @@ that ordering is what sells the depth.
 - **The floor is the only thing drawn in squashed space**, so its texture foreshortens
   with the plane instead of sliding across it.
 
+## Lighting
+
+The arena is night, lit by the fight. A darkness layer at quarter resolution has light
+cut out of it — the player's lamp, each turret as it fires, muzzle flashes, the boss's
+eyes, the pulse charge, the ground rings — and is composited over the world. A bloom
+pass draws the emissive things small, blurs them and adds them back: bullets, turret
+heads, the boss's eyes, embers. Each arena carries a colour grade and an ambience — dust
+drifting across the Dust Bowl, embers rising in the Foundry and the Pit, mist along the
+Bridge and the Ascent. All of it sits behind a Lighting toggle in settings for weak
+devices; the game is fully playable with it off.
+
 ## Feel
 
-Small things that make a hit land: hit stop freezes the simulation for a few frames on a
+Small things that make a hit land: dash afterimages, turret recoil with a muzzle flash,
+hit sparks where rounds land, body-coloured gibs on a kill, ground shockwave rings on a
+slam and a node upgrade, and a screen flash when a slam lands or a boss dies. And the
+older set: hit stop freezes the simulation for a few frames on a
 brute or boss kill, bullets shove bodies backwards, damage numbers float off the big
 targets only (doing it for every grunt would be noise and needless cost), muzzle flashes,
 and corpse decals that accumulate where the fighting actually is — a battlefield that

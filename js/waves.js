@@ -55,7 +55,7 @@ class WaveDirector {
     if (this.laneTimer <= 0 || this.lanes.length !== want) {
       this.laneTimer = rand(7, 12);
       this.lanes = [];
-      for (let i = 0; i < want; i++) this.lanes.push(game.edgePoint(randInt(0, 3)));
+      for (let i = 0; i < want; i++) this.lanes.push(game.edgePoint(pick(this.arena.spawnSides || [0, 1, 2, 3])));
     }
   }
 
@@ -82,7 +82,7 @@ class WaveDirector {
     if (!this.finaleFired && this.elapsed >= STAGE_DURATION - 70 && this.arena.mode !== 'gauntlet') {
       this.finaleFired = true;
       game.announce('FINAL ASSAULT', '#ff7a6b');
-      for (let side = 0; side < 4; side++) game.spawnCluster(this.rollType(), 90, side);
+      for (const side of (this.arena.spawnSides || [0, 1, 2, 3])) game.spawnCluster(this.rollType(), 90, side);
       for (let i = 0; i < 3; i++) game.spawnAtEdge('brute');
     }
   }

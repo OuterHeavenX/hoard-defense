@@ -20,7 +20,7 @@ Game.prototype.draw = function () {
   const zoom = dpr * this.scale;
 
   ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
-  ctx.fillStyle = '#15170f';
+  ctx.fillStyle = this.arena.void || '#15170f';
   ctx.fillRect(0, 0, w, h);
 
   const shake = this.shakeEnabled ? this.shake : 0;
@@ -37,7 +37,9 @@ Game.prototype.draw = function () {
   this.drawGround(ctx);
   this.drawStairs(ctx);
   this.drawDecals(ctx);
+  this.drawRings(ctx);
   this.drawNodePads(ctx);
+  this.drawTrail(ctx);
   this.drawShadows(ctx, camX, camPY, w, h);
   this.drawSortedBodies(ctx, camX, camPY, w, h);
   this.drawBullets(ctx);
@@ -45,10 +47,15 @@ Game.prototype.draw = function () {
   this.drawNova(ctx);
   this.drawMuzzle(ctx);
   this.drawNumbers(ctx);
+  this.drawAmbient(ctx);
 
   ctx.restore();
 
+  this.drawLighting(ctx, camX, camPY, w, h, zoom);
+  this.drawGlow(ctx, camX, camPY, w, h, zoom);
+
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  this.drawGrade(ctx, screen.w, screen.h);
   this.drawVignette(ctx, screen.w, screen.h);
   this.drawBanner(ctx, screen.w, screen.h);
   this.drawMinimap(ctx, screen.w, screen.h);
@@ -68,7 +75,12 @@ Game.prototype.drawGround = function (ctx) {
   ctx.fillRect(0, 0, WORLD_W, WORLD_H);
   ctx.restore();
 
-  // Border drawn unsquashed so the line keeps an even weight all the way round.
+  // Border drawn unsquashed so the line keeps an even weight all the way
+  // round, with a soft drop outside it so the edge reads as a drop into the
+  // void rather than a line painted on the floor.
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = 26;
+  ctx.strokeRect(-13, -13 * TILT, WORLD_W + 26, WORLD_H * TILT + 26 * TILT);
   ctx.strokeStyle = this.arena.border;
   ctx.lineWidth = 5;
   ctx.strokeRect(0, 0, WORLD_W, WORLD_H * TILT);
@@ -536,13 +548,21 @@ Game.prototype.drawTurret = function (ctx, node) {
     ctx.strokeStyle = '#3d4550';
     ctx.lineWidth = 6;
     ctx.lineCap = 'round';
+    const kick = (node.recoil || 0) * 6;
     for (let i = 0; i < st.barrels; i++) {
       const a = node.angle + (i - (st.barrels - 1) / 2) * 0.16;
+      const len = node.radius + 10 - kick;
       ctx.beginPath();
-      ctx.moveTo(node.x, py - height - 6);
-      ctx.lineTo(node.x + Math.cos(a) * (node.radius + 10),
-                 py - height - 6 + Math.sin(a) * (node.radius + 10) * TILT);
+      ctx.moveTo(node.x - Math.cos(a) * kick, py - height - 6 - Math.sin(a) * kick * TILT);
+      ctx.lineTo(node.x + Math.cos(a) * len, py - height - 6 + Math.sin(a) * len * TILT);
       ctx.stroke();
+    }
+    if (node.recoil > 0.5) {
+      ctx.fillStyle = '#dff4ff';
+      ctx.beginPath();
+      ctx.arc(node.x + Math.cos(node.angle) * (node.radius + 12), py - height - 6 + Math.sin(node.angle) * (node.radius + 12) * TILT,
+              4 + node.recoil * 4, 0, TAU);
+      ctx.fill();
     }
   }
 
@@ -715,6 +735,184 @@ Game.prototype.drawBossBar = function (ctx, w, h) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffe9e9';
   ctx.fillText(b.name, w / 2, y - 6);
+};
+
+/* ------------------------------------------------------------- Juice */
+
+Game.prototype.drawRings = function (ctx) {
+  for (const ring of this.rings) {
+    const t = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+    const rad = ring.r + (ring.maxR - ring.r) * (1 - Math.pow(1 - t, 2));
+    ctx.strokeStyle = `rgba(${ring.color},${(1 - t) * 0.9})`;
+    ctx.lineWidth = 8 * (1 - t) + 1.5;
+    ctx.beginPath();
+    ctx.ellipse(ring.x, ring.y * TILT, rad, rad * TILT, 0, 0, TAU);
+    ctx.stroke();
+  }
+};
+
+Game.prototype.drawTrail = function (ctx) {
+  for (const t of this.trail) {
+    const a = clamp(t.life / t.maxLife, 0, 1) * 0.45;
+    const frame = characterFrame('player', t.anim | 0, t.flip, true);
+    ctx.globalAlpha = a;
+    ctx.drawImage(frame.canvas, t.x - frame.w / 2, t.y * TILT - frame.h, frame.w, frame.h);
+  }
+  ctx.globalAlpha = 1;
+};
+
+Game.prototype.drawAmbient = function (ctx) {
+  for (const m of this.ambient) {
+    const a = Math.sin(clamp(m.life / m.maxLife, 0, 1) * Math.PI);
+    const py = m.y * TILT - m.z;
+    if (m.kind === 'mist') {
+      ctx.fillStyle = `rgba(190,205,230,${a * 0.06})`;
+      ctx.beginPath();
+      ctx.ellipse(m.x, py, m.size, m.size * 0.5, 0, 0, TAU);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = m.kind === 'embers' ? `rgba(255,${150 + (a * 80) | 0},60,${a * 0.9})` : `rgba(230,215,170,${a * 0.5})`;
+      ctx.fillRect(m.x - m.size / 2, py - m.size / 2, m.size, m.size);
+    }
+  }
+};
+
+/* ---------------------------------------------------------- Lighting */
+
+/* A darkness layer at quarter resolution with light cut out of it: the
+   player's lamp, turrets as they fire, muzzle flashes, the boss's eyes, the
+   pulse charge. Composited over the world so the arena reads as night lit
+   by the fight, which is where the mood was always meant to sit. */
+Game.prototype.lightLayer = function (w, h) {
+  const scale = 0.25;
+  const lw = Math.max(1, Math.ceil(w * scale)), lh = Math.max(1, Math.ceil(h * scale));
+  if (!this._light || this._light.width !== lw || this._light.height !== lh) {
+    this._light = document.createElement('canvas');
+    this._light.width = lw; this._light.height = lh;
+  }
+  return { c: this._light, scale };
+};
+
+Game.prototype.collectLights = function (out) {
+  out.length = 0;
+  const p = this.player;
+  if (!this.attract) out.push({ x: p.x, y: p.y * TILT - 18, r: 260, a: 1.0, warm: true });
+  if (this.ally && this.ally.active) out.push({ x: this.ally.x, y: this.ally.y * TILT - 30, r: 200, a: 0.8, warm: true });
+  for (const n of this.nodes) {
+    if (n.level > 0 && !n.lock) out.push({ x: n.x, y: n.y * TILT - 40, r: 150 + (n.recoil || 0) * 90, a: 0.55 + (n.recoil || 0) * 0.5 });
+  }
+  if (this.muzzle) out.push({ x: this.muzzle.x, y: this.muzzle.y * TILT - 20, r: 140, a: 1.0, warm: true });
+  if (this.boss && this.boss.alive) out.push({ x: this.boss.x, y: this.boss.y * TILT - this.boss.radius * 2, r: 170, a: 0.7, cold: true });
+  if (this.nova) out.push({ x: this.nova.x, y: this.nova.y * TILT, r: this.nova.radius * 1.4, a: this.nova.life / this.nova.maxLife, cold: true });
+  for (const ring of this.rings) out.push({ x: ring.x, y: ring.y * TILT, r: ring.maxR * 0.8, a: (ring.life / ring.maxLife) * 0.6, warm: true });
+  return out;
+};
+
+Game.prototype.drawLighting = function (ctx, camX, camPY, w, h, zoom) {
+  if (!this.lightingEnabled) return;
+  const { c, scale } = this.lightLayer(w, h);
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  // Deep enough for the lights to matter, shallow enough that a horde in
+  // the dark is still a horde and not a rumour.
+  g.fillStyle = this.attract ? 'rgba(6,8,14,0.46)' : 'rgba(6,8,14,0.55)';
+  g.fillRect(0, 0, c.width, c.height);
+
+  const lights = this.collectLights(this._lights || (this._lights = []));
+  g.globalCompositeOperation = 'destination-out';
+  for (const L of lights) {
+    const sx = (L.x - camX) * scale, sy = (L.y - camPY) * scale, sr = L.r * scale;
+    if (sx < -sr || sx > c.width + sr || sy < -sr || sy > c.height + sr) continue;
+    const grad = g.createRadialGradient(sx, sy, 0, sx, sy, sr);
+    grad.addColorStop(0, `rgba(0,0,0,${L.a})`);
+    grad.addColorStop(0.5, `rgba(0,0,0,${L.a * 0.55})`);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = grad;
+    g.fillRect(sx - sr, sy - sr, sr * 2, sr * 2);
+  }
+
+  ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+  ctx.drawImage(c, 0, 0, w, h);
+};
+
+/* Bloom: emissive things drawn small, blurred, and added back over the
+   scene. Bullets, muzzle flashes, turret heads, the boss's eyes, embers. */
+Game.prototype.drawGlow = function (ctx, camX, camPY, w, h, zoom) {
+  if (!this.lightingEnabled) return;
+  const scale = 0.25;
+  const gw = Math.max(1, Math.ceil(w * scale)), gh = Math.max(1, Math.ceil(h * scale));
+  if (!this._glow || this._glow.width !== gw || this._glow.height !== gh) {
+    this._glow = document.createElement('canvas');
+    this._glow.width = gw; this._glow.height = gh;
+  }
+  const c = this._glow;
+  const g = c.getContext('2d');
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  g.globalCompositeOperation = 'source-over';
+  g.clearRect(0, 0, gw, gh);
+  g.setTransform(scale, 0, 0, scale, -camX * scale, -camPY * scale);
+
+  g.lineCap = 'round';
+  g.lineWidth = 7;
+  for (const b of this.bullets) {
+    const py = b.y * TILT - b.z;
+    g.strokeStyle = b.color;
+    g.beginPath();
+    g.moveTo(b.x, py);
+    g.lineTo(b.x - b.vx * 0.02, py - b.vy * 0.02 * TILT);
+    g.stroke();
+  }
+  if (this.muzzle) {
+    g.fillStyle = '#fff3c4';
+    g.beginPath(); g.arc(this.muzzle.x, this.muzzle.y * TILT - 20, 16, 0, TAU); g.fill();
+  }
+  for (const n of this.nodes) {
+    if (n.level > 0 && !n.lock) {
+      const meta = Assets.towerMeta(n.level);
+      const hh = meta ? (meta.anchorY - meta.deckY) * meta.h * TOWER_SCALE / Assets.manifest.ss : 30 + n.level * 3;
+      g.fillStyle = '#8fd8ff';
+      g.beginPath(); g.arc(n.x, n.y * TILT - hh - 8, 7 + (n.recoil || 0) * 8, 0, TAU); g.fill();
+    }
+  }
+  if (this.boss && this.boss.alive) {
+    const b = this.boss;
+    g.fillStyle = '#7ff4ff';
+    g.beginPath(); g.arc(b.x, b.y * TILT - b.radius * 2.1, 10, 0, TAU); g.fill();
+  }
+  for (const m of this.ambient) {
+    if (m.kind !== 'embers') continue;
+    g.fillStyle = 'rgba(255,170,70,0.9)';
+    g.fillRect(m.x - 3, m.y * TILT - m.z - 3, 6, 6);
+  }
+  for (const ring of this.rings) {
+    g.strokeStyle = `rgba(${ring.color},${clamp(ring.life / ring.maxLife, 0, 1)})`;
+    g.lineWidth = 14;
+    const t = 1 - clamp(ring.life / ring.maxLife, 0, 1);
+    const rad = ring.r + (ring.maxR - ring.r) * (1 - Math.pow(1 - t, 2));
+    g.beginPath(); g.ellipse(ring.x, ring.y * TILT, rad, rad * TILT, 0, 0, TAU); g.stroke();
+  }
+
+  ctx.setTransform(zoom, 0, 0, zoom, 0, 0);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = 0.75;
+  ctx.filter = 'blur(6px)';
+  ctx.drawImage(c, 0, 0, w, h);
+  ctx.filter = 'none';
+  ctx.restore();
+};
+
+/* Per-arena colour grade plus the slam / boss-death screen flash. */
+Game.prototype.drawGrade = function (ctx, w, h) {
+  if (this.lightingEnabled && this.arena.grade) {
+    ctx.fillStyle = this.arena.grade;
+    ctx.fillRect(0, 0, w, h);
+  }
+  if (this.flashScreen > 0) {
+    ctx.fillStyle = `rgba(255,240,210,${this.flashScreen * 0.55})`;
+    ctx.fillRect(0, 0, w, h);
+  }
 };
 
 Game.prototype.drawVignette = function (ctx, w, h) {

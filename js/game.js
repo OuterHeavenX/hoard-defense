@@ -260,17 +260,17 @@ class Game {
     // clampCamera pinned it to the arena's centre and it never followed the
     // player at all. What looked like a zoom problem was a static map shot.
     //
-    // The two numbers are what the camera holds at zoom 1: about 1100 world
-    // px across, and 551 px of projected height, which is ~950 px of world Y
-    // once the tilt unsquashes it. On a 1900x1350 arena that leaves the
-    // camera 800px of travel across and 400 up and down - it moves with you,
-    // and the character is about a twelfth of the screen's height.
+    // The two numbers are what the camera holds at zoom 1: about 850 world px
+    // across, and 425 px of projected height, which is ~730 px of world Y once
+    // the tilt unsquashes it. On a 1900x1350 arena that leaves the camera 1050
+    // px of travel across and 615 up and down - it moves with you, and the
+    // character stands about a tenth of the screen's height.
     //
-    // A phone is too narrow to hold 950 world px of Y at that width, so the
+    // A phone is too narrow to hold 730 world px of Y at that width, so the
     // width wins there and it follows across only, which is what it already
     // did. Ground runs to the edge of the window on open arenas, so a view
     // reaching past a small stage shows floor rather than a black frame.
-    let scale = clamp(this.zoom * Math.min(cssW / 1100, cssH / 551), 0.3, 3.2);
+    let scale = clamp(this.zoom * Math.min(cssW / 850, cssH / 425), 0.3, 4.2);
 
     // A stage small enough that the view covers it on BOTH axes pins the
     // camera dead centre, and the whole thing goes back to being a map shot.

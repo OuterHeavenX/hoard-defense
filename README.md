@@ -1,9 +1,10 @@
 # Hoard Defense
 
-Two five-minute survival stages rendered in 2.5D: one controllable soldier, thousands of
-weak enemies, and a ring of gold-hungry defense nodes. Enemies die in a hit or two, but
-they never stop coming — the only way to keep up is to hoover up the gold they drop and
-pour it into the nodes. Survive to the end of the clock and the stage boss walks in.
+Seven five-minute survival stages rendered in 2.5D: one controllable soldier, thousands
+of weak enemies, and gold-hungry defense nodes scattered through a fortified camp.
+Enemies die in a hit or two, but they never stop coming — the only way to keep up is to
+hoover up the gold they drop and pour it into the nodes and the walls. Survive to the
+end of the clock and the stage boss walks in.
 
 **To play:** clone the repo and open `index.html` — no build step, no server, no
 dependencies.
@@ -82,9 +83,28 @@ zone over that gap is the whole of the strategy.
 Walls are priced against turrets on purpose. Raising one run to the top costs
 about two thirds of maxing a node, and the gold only comes from kills.
 
+## Arenas
+
+A stage is much larger than the screen — the Dust Bowl is 2800x2000 and the Ascent's
+corridor climbs 4600 — and it is a place rather than a rectangle. Barracks, arsenals,
+sheds and gates stand across the floor as solid buildings that both you and the horde
+have to go around, so the ground has lanes, corners and courtyards in it. They are laid
+out at a density that keeps a few structures in view wherever you are, and kept clear of
+the node pads and wall build spots so nothing you need is ever walled off.
+
+Buildings block with the same rule as everything else here: a body is pushed out along
+the shortest way, and only the component pointing into the wall is lost, so the crowd
+slides around a corner instead of stopping at it. Nothing plans a path.
+
+Because a stage is now far bigger than the view, the horde is spawned around the camera
+rather than at the map's edge, at a fixed world distance that does not shrink with the
+window. Spawning at the edge would have meant a wave spent itself walking, and a stage
+would have been as hard as it was small; keying it to the view instead would have made
+the game as hard as the screen was small. Neither is a knob anyone chose.
+
 ## Defense nodes
 
-Six pads ring the arena. Feeding one costs 35 / 80 / 150 / 260 / 420 gold across five
+Pads are scattered through each arena. Feeding one costs 35 / 80 / 150 / 260 / 420 gold across five
 tiers. Higher tiers fire faster and harder, gain splash damage from tier 2, and fire
 three barrels at tier 5. Off-screen nodes are flagged by edge chevrons — solid when you
 are carrying enough gold to finish the next tier.
@@ -137,9 +157,9 @@ that ordering is what sells the depth.
 ## The camera
 
 It follows the player, and that is the whole requirement. The camera holds about
-850 world pixels across and 730 down at the default distance, which on a 1900x1350
-arena leaves it 1050 pixels of travel across and 615 up and down. The character
-stands around a tenth of the screen's height.
+850 world pixels across and 730 down at the default distance, which on a 2800x2000
+arena leaves it nearly 2000 pixels of travel across. The character stands around a
+tenth of the screen's height.
 
 The requirement is easy to break by accident. If the view is ever *larger* than the
 arena on both axes, the clamp that keeps the camera inside the floor pins it to the
@@ -373,8 +393,10 @@ Most of the feel lives in a few constants:
 - `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
 - `js/sprites.js` — the `looks` table: size, colour and pose per character
 - `js/arenas.js` — stage definitions; add an entry to add a stage. `towers`
-  picks the turret family, `walls` the fortress the barricades come from, and
-  `barricades` and `props` place the wall runs and the dressing
+  picks the turret family, `walls` the fortress the barricades come from,
+  `barricades` and `props` place the wall runs and the buildings, and a prop
+  marked `solid` is terrain rather than dressing
+- `js/game.js` — `edgePoint()`, how far out the horde arrives
 - `js/entities.js` — `Barricade.COSTS` and `Barricade.SEG_HP`, what a wall
   costs and how long it stands
 - `js/perks.js` — the perk table and `xpForLevel()`

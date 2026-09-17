@@ -168,6 +168,9 @@ class Enemy {
     this.touchTimer = 0;
     this.flash = 0;
     this.wobble = rand(0, TAU);
+    // Whether this one peels off for an objective. Fixed at spawn so a body
+    // does not flicker between two targets as the threshold moves.
+    this.bias = Math.random();
     this.scale = rand(0.88, 1.16);
     this.anim = rand(0, WALK_FRAMES);
     this.flip = Math.random() < 0.5;

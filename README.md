@@ -61,6 +61,29 @@ the main way out of a closing pocket.
 | **Tank** (blue) | Slower, takes a few hits, drops more gold. |
 | **Brute** (pink) | Rare, huge health pool, hits hard, drops a pile of gold and a medkit. |
 
+## Objectives
+
+A stage used to be one long hold with a clock on it. Now it asks you to go
+somewhere, and going somewhere means leaving the turrets you just paid for.
+That trade is the point: every objective is a reason to be in the wrong place.
+
+- **Supply drop** — a crate lands out in the dark. Reach it inside 40 seconds
+  and it pays in loose gold at your feet, which still has to be carried to a
+  node before it counts for anything. The horde does not care about it; the
+  risk is the walk.
+- **Hold the ground** — a marked circle you have to stand in for twelve
+  seconds. It does not pull the crowd, because the crowd already comes for
+  whoever is standing there. What makes it hard is that standing still is the
+  one thing this game otherwise never lets you do. Pays a level.
+- **Defend the beacon** — a signal fire the horde wants out. Most of the crowd
+  peels off toward it, so the fight moves there whether you follow or not.
+  Keep it alight for 38 seconds and every built turret gains a tier.
+
+One lands roughly every minute after the first, never during a boss, and never
+so late that it runs past the clock. The horde only ever peels off in part:
+pulling all of it meant ignoring an objective bled you dry while the rest piled
+up somewhere else and came back at once.
+
 ## Walls
 
 Gold has somewhere else to go. Each arena has build spots on the ground where
@@ -132,6 +155,7 @@ js/entities.js    player, enemies, bosses, bullets, coins, nodes
 js/perks.js       level-up perk draft
 js/camp.js        persistent bank, permanent upgrades, best-run records
 js/waves.js       the 5 minute wave director
+js/objectives.js  what the stage asks you to go and do
 js/game.js        simulation
 js/render.js      2.5D renderer
 js/main.js        canvas sizing, fixed-step loop, menus, settings
@@ -389,6 +413,7 @@ Most of the feel lives in a few constants:
 
 - `js/game.js` — `WORLD_W/H`, `MAX_ENEMIES`, `DEPOSIT_RATE`, `NEIGHBOUR_VISITS`
 - `js/waves.js` — `STAGE_DURATION`, `rate()`, `rollType()`, surge sizing
+- `js/objectives.js` — `OBJECTIVE_TYPES`, what each one asks and pays
 - `js/entities.js` — `ENEMY_TYPES`, `DefenseNode.COSTS`, node `stats`
 - `js/utils.js` — `TILT`, the ground-plane foreshortening for the whole 2.5D look
 - `js/sprites.js` — the `looks` table: size, colour and pose per character

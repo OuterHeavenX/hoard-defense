@@ -134,6 +134,28 @@ that ordering is what sells the depth.
 - **The floor is the only thing drawn in squashed space**, so its texture foreshortens
   with the plane instead of sliding across it.
 
+## The camera
+
+It follows the player, and that is the whole requirement. The camera holds about
+1100 world pixels across and 950 down at the default distance, which on a 1900x1350
+arena leaves it 800 pixels of travel across and 400 up and down. The character sits
+around a twelfth of the screen's height.
+
+The requirement is easy to break by accident. If the view is ever *larger* than the
+arena on both axes, the clamp that keeps the camera inside the floor pins it to the
+arena's centre and it stops moving — the game silently turns into a fixed map shot
+with the player lost somewhere in it. Every camera complaint this project has had
+turned out to be that, not the zoom level. So the smallest stages are pulled in until
+at least one axis has somewhere to travel. One pinned axis is fine and normal: the
+Bridge is a strip and the Ascent a shaft, and each follows along its long side.
+
+A phone is too narrow to hold 950 world pixels of depth at that width, so width wins
+there and it follows across only.
+
+Camera distance is a slider in Settings and a pair of buttons on the HUD, saved under
+`hoard.zoom2`. The key is versioned because the distance a given number means changed
+when the camera became a follow camera.
+
 ## Lighting
 
 The arena is torchlit. Flame poles stand around every arena's edge and beside every node

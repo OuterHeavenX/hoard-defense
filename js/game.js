@@ -43,6 +43,7 @@ class Game {
     const startAt = this.arena.playerStart || { x: WORLD_W / 2, y: WORLD_H / 2 };
     this.player = new Player(startAt.x, startAt.y);
     this.director = new WaveDirector(this.arena);
+    this.objectives = new ObjectiveDirector();
     this.enemies = [];
     this.enemyPool = [];
     this.bullets = [];
@@ -438,6 +439,7 @@ class Game {
     }
 
     this.input.update();
+    this.objectives.update(dt, this);
     this.focus.x = this.player.x;
     this.focus.y = this.player.y;
     this.director.update(dt, this);
@@ -584,6 +586,12 @@ class Game {
     const p = this.player;
     const focus = this.focus;
     const list = this.enemies;
+    // An objective that pulls takes a share of the crowd with it, so the
+    // fight moves there whether the player does or not - that is what makes
+    // leaving the turrets a decision. Only a share, though: pulling all of
+    // it meant ignoring an objective bled you dry while the horde piled up
+    // somewhere else and came back at once.
+    const pull = this.objectives ? this.objectives.focus() : null;
 
     for (let i = list.length - 1; i >= 0; i--) {
       const e = list[i];
@@ -591,7 +599,8 @@ class Game {
       e.touchTimer = Math.max(0, e.touchTimer - dt);
 
       // Seek the player with a little sway so the mass doesn't look rigid.
-      let dx = focus.x - e.x, dy = focus.y - e.y;
+      const aim = pull && e.bias < 0.6 ? pull : focus;
+      let dx = aim.x - e.x, dy = aim.y - e.y;
       const len = Math.hypot(dx, dy) || 1;
       dx /= len; dy /= len;
       e.wobble += dt * 3;
@@ -641,6 +650,20 @@ class Game {
         if (dist2(e.x, e.y, ally.x, ally.y) < reach * reach) {
           e.touchTimer = 0.6;
           this.damageAlly(e.damage * 0.6);
+        }
+      }
+
+      const live = this.objectives.active;
+      if (live && live.kind === 'beacon' && e.touchTimer <= 0) {
+        const reach = e.radius + live.radius;
+        if (dist2(e.x, e.y, live.x, live.y) < reach * reach) {
+          e.touchTimer = 0.6;
+          live.hp -= e.damage * 0.8;
+          live.flash = 1;
+          if (live.hp <= 0) {
+            this.burst(live.x, live.y, 26, '#ff9d5c', 240);
+            this.shake = Math.min(16, this.shake + 6);
+          }
         }
       }
 
@@ -731,6 +754,37 @@ class Game {
         this.rings.push({ x: c.x, y: c.y, r: 20, maxR: 180, life: 0.5, maxLife: 0.5, color: '255,217,160' });
         this.audio.upgrade();
       }
+    }
+  }
+
+  /* What an objective pays out. Each type pays in its own currency so the
+     three of them are worth going to for different reasons. */
+  rewardObjective(o) {
+    const p = this.player;
+    this.announce(o.spec.label + ' SECURED', o.spec.colour);
+    this.rings.push({ x: o.x, y: o.y, r: 30, maxR: 300, life: 0.6, maxLife: 0.6, color: '255,226,150' });
+    this.burst(o.x, o.y, 30, o.spec.colour, 260);
+    this.audio.upgrade();
+
+    if (o.kind === 'drop') {
+      // Paid in loose gold at your feet, so it still has to be carried to a
+      // node before it counts for anything.
+      for (let i = 0; i < 30; i++) {
+        this.spawnCoin(o.x + rand(-70, 70), o.y + rand(-70, 70), 18);
+      }
+      this.spawnCoin(o.x, o.y, 35, 'health');
+    } else if (o.kind === 'hold') {
+      this.pendingLevels++;
+    } else if (o.kind === 'beacon') {
+      let raised = 0;
+      for (const node of this.nodes) {
+        if (node.lock || node.level === 0 || node.maxed) continue;
+        node.level++;
+        node.invested = 0;
+        node.pulse = 1;
+        raised++;
+      }
+      if (!raised) for (let i = 0; i < 24; i++) this.spawnCoin(o.x + rand(-60, 60), o.y + rand(-60, 60), 16);
     }
   }
 

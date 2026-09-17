@@ -39,6 +39,7 @@ Game.prototype.draw = function () {
   this.drawDecals(ctx);
   this.drawRings(ctx);
   this.drawNodePads(ctx);
+  this.drawObjective(ctx);
   this.drawTrail(ctx);
   this.drawShadows(ctx, camX, camPY, w, h);
   this.drawSortedBodies(ctx, camX, camPY, w, h);
@@ -62,6 +63,7 @@ Game.prototype.draw = function () {
   this.drawMinimap(ctx, screen.w, screen.h);
   this.drawBossBar(ctx, screen.w, screen.h);
   this.drawNodeMarkers(ctx, screen.w, screen.h);
+  this.drawObjectiveHud(ctx, screen.w, screen.h);
   this.drawTouchStick(ctx);
 };
 
@@ -1066,6 +1068,8 @@ Game.prototype.collectLights = function (out) {
                a: armed ? 0.14 + kick * 0.62 : 0.55 + kick * 0.5, warm: armed });
   }
   if (this.muzzle) out.push({ x: this.muzzle.x, y: this.muzzle.y * TILT - 20, r: 140, a: 1.0, warm: true });
+  const goal = this.objectives && this.objectives.active;
+  if (goal) out.push({ x: goal.x, y: goal.y * TILT - 30, r: goal.radius + 210, a: 0.95, warm: goal.kind !== 'hold', cold: goal.kind === 'hold' });
   for (const t of this.torches) out.push({ x: t.x, y: t.y * TILT - 52, r: 230 * t.flicker, a: 0.9, warm: true });
   for (const p of this.props) {
     if (p.name === 'brazier') out.push({ x: p.x, y: p.y * TILT - 26, r: 190, a: 0.85, warm: true });
@@ -1233,6 +1237,153 @@ Game.prototype.drawMinimap = function (ctx, w, h) {
 
 /* Edge chevrons pointing at nodes that are off screen, so a player carrying
    gold always knows which way to run to spend it. */
+/* The objective on the floor. A crate to reach, ground to stand on, or a
+   signal fire to keep alight - each one is a place, so each one is drawn
+   where it is rather than only on the HUD. */
+Game.prototype.drawObjective = function (ctx) {
+  const o = this.objectives && this.objectives.active;
+  if (!o) return;
+  const py = o.y * TILT;
+  const pulse = 0.5 + Math.sin(o.bob * 3) * 0.5;
+
+  if (o.kind === 'hold') {
+    const r = o.radius;
+    ctx.fillStyle = 'rgba(143,232,192,0.10)';
+    ctx.beginPath();
+    ctx.ellipse(o.x, py, r, r * TILT, 0, 0, TAU);
+    ctx.fill();
+    // The ring closes as the ground is held, so progress is readable from
+    // inside it without looking up at the HUD.
+    ctx.strokeStyle = 'rgba(143,232,192,0.9)';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.ellipse(o.x, py, r, r * TILT, 0, -Math.PI / 2, -Math.PI / 2 + TAU * o.fill);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(143,232,192,0.28)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([10, 8]);
+    ctx.beginPath();
+    ctx.ellipse(o.x, py, r, r * TILT, 0, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    return;
+  }
+
+  // A pad under both of the standing kinds so they read as a place.
+  ctx.fillStyle = o.kind === 'beacon' ? 'rgba(255,157,92,0.13)' : 'rgba(255,211,77,0.13)';
+  ctx.beginPath();
+  ctx.ellipse(o.x, py, o.radius + 26, (o.radius + 26) * TILT, 0, 0, TAU);
+  ctx.fill();
+
+  // A turning ring on the floor so it is never mistaken for one of the
+  // buildings it is standing among.
+  ctx.strokeStyle = o.kind === 'beacon' ? 'rgba(255,157,92,0.75)' : 'rgba(255,211,77,0.75)';
+  ctx.lineWidth = 3;
+  ctx.setLineDash([14, 12]);
+  ctx.lineDashOffset = -o.bob * 26;
+  ctx.beginPath();
+  ctx.ellipse(o.x, py, o.radius + 26, (o.radius + 26) * TILT, 0, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
+
+  const set = this.propSet();
+  const name = o.kind === 'beacon' ? 'bell' : 'stack';
+  const img = set && set.props[name];
+  const meta = set && set.meta.props[name];
+  const lift = o.kind === 'drop' ? Math.sin(o.bob * 2.2) * 4 : 0;
+  let top = py - 96;
+  if (img && meta) {
+    const k = TOWER_SCALE / Assets.propMeta.ss;
+    const w = meta.w * k, h = meta.h * k;
+    const ty = py - meta.anchorY * h + lift;
+    top = ty - 14;
+    ctx.drawImage(img, o.x - meta.anchorX * w, ty, w, h);
+    if (o.flash > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = o.flash * 0.6;
+      ctx.drawImage(img, o.x - meta.anchorX * w, ty, w, h);
+      ctx.restore();
+    }
+  } else {
+    ctx.fillStyle = o.spec.colour;
+    ctx.fillRect(o.x - 18, py - 40 + lift, 36, 40);
+  }
+
+  // Its own fire on top, which is what tells it apart at a glance.
+  const fh = 16 + pulse * 7;
+  ctx.fillStyle = 'rgba(255,196,110,0.92)';
+  ctx.beginPath();
+  ctx.moveTo(o.x, top - fh);
+  ctx.quadraticCurveTo(o.x + 9, top - fh * 0.3, o.x, top);
+  ctx.quadraticCurveTo(o.x - 9, top - fh * 0.3, o.x, top - fh);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,246,208,0.95)';
+  ctx.beginPath();
+  ctx.arc(o.x, top - fh * 0.42, 3.4 + pulse * 1.6, 0, TAU);
+  ctx.fill();
+
+  // A column of light so it can be found from across the arena.
+  const beam = ctx.createLinearGradient(0, py - 300, 0, py);
+  beam.addColorStop(0, 'rgba(255,220,150,0)');
+  beam.addColorStop(1, o.kind === 'beacon' ? 'rgba(255,157,92,0.30)' : 'rgba(255,211,77,0.26)');
+  ctx.fillStyle = beam;
+  ctx.fillRect(o.x - 16 - pulse * 4, py - 300, 32 + pulse * 8, 300);
+
+  if (o.kind === 'beacon') {
+    const bw = 84, by = top - 34;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(o.x - bw / 2, by, bw, 7);
+    ctx.fillStyle = '#ff9d5c';
+    ctx.fillRect(o.x - bw / 2, by, bw * o.fill, 7);
+  }
+};
+
+/* The call-out: what it is, how long is left, and an arrow to it when it is
+   off screen. Without the arrow a stage this size would just be asking the
+   player to search. */
+Game.prototype.drawObjectiveHud = function (ctx, w, h) {
+  const o = this.objectives && this.objectives.active;
+  if (!o || this.attract) return;
+
+  const sx = (o.x - this.camera.x) * this.scale + w / 2;
+  const sy = (o.y - this.camera.y) * TILT * this.scale + h / 2;
+  const pad = 46;
+  if (sx < pad || sx > w - pad || sy < pad || sy > h - pad) {
+    const a = Math.atan2(sy - h / 2, sx - w / 2);
+    const r = Math.min((w / 2 - pad) / Math.abs(Math.cos(a)), (h / 2 - pad) / Math.abs(Math.sin(a)));
+    ctx.save();
+    ctx.translate(w / 2 + Math.cos(a) * r, h / 2 + Math.sin(a) * r);
+    ctx.rotate(a);
+    ctx.fillStyle = o.spec.colour;
+    ctx.beginPath();
+    ctx.moveTo(16, 0);
+    ctx.lineTo(-10, -11);
+    ctx.lineTo(-10, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  const bw = 268, bx = (w - bw) / 2, by = 96;
+  ctx.fillStyle = 'rgba(8,10,12,0.62)';
+  ctx.fillRect(bx, by, bw, 42);
+  ctx.fillStyle = o.spec.colour;
+  ctx.font = 'bold 14px ui-monospace, monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(o.spec.label, bx + 12, by + 19);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = o.left < 10 ? '#ff7a6b' : 'rgba(255,255,255,0.75)';
+  ctx.fillText(Math.ceil(Math.max(0, o.left)) + 's', bx + bw - 12, by + 19);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.14)';
+  ctx.fillRect(bx + 12, by + 28, bw - 24, 6);
+  ctx.fillStyle = o.spec.colour;
+  ctx.fillRect(bx + 12, by + 28, (bw - 24) * o.fill, 6);
+  ctx.textAlign = 'left';
+};
+
 Game.prototype.drawNodeMarkers = function (ctx, w, h) {
   if (this.attract) return;
   const pad = 34;

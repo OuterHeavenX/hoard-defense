@@ -254,26 +254,34 @@ class Game {
     this.dpr = dpr;
     this.screen.w = cssW;
     this.screen.h = cssH;
-    // One camera distance for every stage, scaled by the player's zoom.
-    // Nothing is fitted to the arena. The floor is low enough that a phone
-    // can pull back to see a 1000-wide corridor or nodes 620 out: at the old
-    // 0.5 floor a phone saw ~780 world px, which fit stages 1-2 exactly and
-    // cut the wider layouts off - what read as 'zoomed in' on stages 3+.
+    // A third-person follow camera, which means the view has to be SMALLER
+    // than the arena. That was the bug behind every camera complaint so far:
+    // at the old distance the view was wider and taller than the stage, so
+    // clampCamera pinned it to the arena's centre and it never followed the
+    // player at all. What looked like a zoom problem was a static map shot.
     //
-    // The ceiling has to clear what a large desktop needs. At the old 1.15 a
-    // 2560-wide window sat below its own default distance, so the arena was
-    // pinned small in the middle of the screen and the zoom-in button did
-    // nothing - the complaint that the game looked zoomed out.
-    const base = this.zoom * Math.min(cssW / 1100, cssH / 760);
-    // An open arena should at least span the window. On a wide desktop the
-    // default distance left a small stage floating with out-of-bounds ground
-    // either side of it. Only the width is forced: no arena is ever as tall
-    // as a screen once the height is squashed by the tilt, so a vertical gap
-    // is normal and the ground simply runs on through it. A corridor or a
-    // chasm keeps its own framing, and the 2.0 ceiling stops a narrow arena
-    // from dragging the camera onto the player's boots.
-    const span = this.arena && !this.arena.void ? Math.min(cssW / WORLD_W, 2.0) : 0;
-    this.scale = clamp(Math.max(base, span), 0.24, 2.4);
+    // The two numbers are what the camera holds at zoom 1: about 1100 world
+    // px across, and 551 px of projected height, which is ~950 px of world Y
+    // once the tilt unsquashes it. On a 1900x1350 arena that leaves the
+    // camera 800px of travel across and 400 up and down - it moves with you,
+    // and the character is about a twelfth of the screen's height.
+    //
+    // A phone is too narrow to hold 950 world px of Y at that width, so the
+    // width wins there and it follows across only, which is what it already
+    // did. Ground runs to the edge of the window on open arenas, so a view
+    // reaching past a small stage shows floor rather than a black frame.
+    let scale = clamp(this.zoom * Math.min(cssW / 1100, cssH / 551), 0.3, 3.2);
+
+    // A stage small enough that the view covers it on BOTH axes pins the
+    // camera dead centre, and the whole thing goes back to being a map shot.
+    // One pinned axis is normal - the Bridge is a strip, the Ascent a shaft -
+    // but both is the failure, so the smallest arenas are pulled in until at
+    // least one axis has somewhere to travel.
+    const worldPH = WORLD_H * TILT;
+    if (cssW / scale >= WORLD_W && cssH / scale >= worldPH) {
+      scale = clamp(Math.max(cssW / WORLD_W, cssH / worldPH) * 1.08, scale, 3.2);
+    }
+    this.scale = scale;
     this.view.w = cssW / this.scale;
     this.view.h = cssH / this.scale;
   }

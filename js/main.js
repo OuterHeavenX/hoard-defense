@@ -103,13 +103,16 @@
   });
 
   // Camera distance: persisted, adjustable from settings and from the HUD.
-  let zoom = 0.8;
-  try { const z = parseFloat(localStorage.getItem('hoard.zoom')); if (z >= 0.45 && z <= 1.3) zoom = z; } catch (e) { /* private mode */ }
+  // A new key: the distance this number means changed when the camera became
+  // a follow camera, so an old saved value would frame the game differently
+  // from anything that was tested.
+  let zoom = 1.0;
+  try { const z = parseFloat(localStorage.getItem('hoard.zoom2')); if (z >= 0.45 && z <= 1.3) zoom = z; } catch (e) { /* private mode */ }
   const zoomSlider = document.getElementById('opt-zoom');
   function applyZoom(z) {
     zoom = game.setZoom(z);
     zoomSlider.value = String(Math.round(zoom * 100));
-    try { localStorage.setItem('hoard.zoom', String(zoom)); } catch (e) { /* ignore */ }
+    try { localStorage.setItem('hoard.zoom2', String(zoom)); } catch (e) { /* ignore */ }
   }
   applyZoom(zoom);
   zoomSlider.addEventListener('input', () => applyZoom(Number(zoomSlider.value) / 100));

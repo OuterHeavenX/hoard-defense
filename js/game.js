@@ -3,7 +3,7 @@
 
 let WORLD_W = 1900;          // set from the active arena
 let WORLD_H = 1350;
-const MAX_WORLD_H = 3600;    // ceiling used to size fixed-length buffers
+const MAX_WORLD_H = 6400;    // ceiling used to size fixed-length buffers
 const MAX_ENEMIES = 1400;
 const MAX_BRUTES = 9;          // brutes are set-pieces, not a crowd
 const MAX_COINS = 420;
@@ -56,6 +56,7 @@ class Game {
     this.barricades = this.buildBarricades();
     this.wallSegs = this.buildWallSegs();
     this.props = this.buildProps();
+    this.blocks = this.buildBlocks();
     this.activeBarricade = null;
     this.kills = 0;
     this.goldBanked = 0;
@@ -132,7 +133,47 @@ class Game {
 
   buildProps() {
     const cx = WORLD_W / 2, cy = WORLD_H / 2;
-    return (this.arena.props || []).map((p) => ({ kind: 'prop', x: cx + p.x, y: cy + p.y, name: p.kind }));
+    return (this.arena.props || []).map((p) => ({
+      kind: 'prop', x: cx + p.x, y: cy + p.y, name: p.kind, solid: !!p.solid
+    }));
+  }
+
+  /* The props that are buildings rather than dressing, with the radius they
+     stand on. Taken from the sprite's own measured footprint so what blocks
+     you is what you can see, and collected once because they never move. */
+  buildBlocks() {
+    const set = Assets.propSets[this.arena.walls];
+    const out = [];
+    for (const p of this.props) {
+      if (!p.solid) continue;
+      const meta = set && set.meta.props[p.name];
+      const r = meta ? meta.baseR * Assets.propMeta.unitPx * TOWER_SCALE * 0.78 : 34;
+      out.push({ x: p.x, y: p.y, r });
+    }
+    return out;
+  }
+
+  /* Pushes a body out of any building it has walked into, along the shortest
+     way out. Only the component pointing into the wall is lost, so a body
+     that meets a corner slides around it instead of stopping dead - the same
+     rule the barricades use, and the reason the horde flows around a block
+     without anything having to plan a path. */
+  clearBlocks(body) {
+    const blocks = this.blocks;
+    for (let i = 0; i < blocks.length; i++) {
+      const b = blocks[i];
+      const reach = b.r + body.radius;
+      let dx = body.x - b.x, dy = body.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= reach * reach) continue;
+      let d = Math.sqrt(d2);
+      if (d < 0.001) { dx = 1; dy = 0; d = 1; }
+      const nx = dx / d, ny = dy / d;
+      body.x = b.x + nx * reach;
+      body.y = b.y + ny * reach;
+      const into = body.vx * nx + body.vy * ny;
+      if (into < 0) { body.vx -= into * nx; body.vy -= into * ny; }
+    }
   }
 
   buildTorches() {
@@ -300,14 +341,32 @@ class Game {
   }
 
   /* Random point just outside the arena on a random side. */
+  /* Just outside the camera, not out at the world edge. Once a stage is
+     bigger than the view, spawning at the edge of the map means a wave spends
+     itself walking instead of fighting, and the pressure a stage applies
+     would depend on how large it happens to be. Anchoring to the view keeps
+     that constant and leaves the arena free to be any size. A point that
+     lands off the floor slides back onto it, so a player pressed into a
+     corner still gets a horde rather than nothing. */
   edgePoint(side = randInt(0, 3), spread = 1) {
-    const m = 70;
+    const m = 90 * spread;
+    // Far enough out to be off screen, but never closer than a fixed world
+    // distance. Keying the range purely to the view made a stage as hard as
+    // the window was small: a desktop's tight view dropped the horde in its
+    // lap while a phone, which sees a tall slice of the floor, got the same
+    // wave from a long way off. The floor is what the walk used to be worth
+    // when spawns came off the edge of a 1900x1350 arena.
+    const halfW = Math.max(850, this.view.w / 2 + m);
+    const halfH = Math.max(700, this.view.h / (2 * TILT) + m);
+    const cx = this.camera.x, cy = this.camera.y;
+    let x, y;
     switch (side) {
-      case 0: return { x: rand(-m, WORLD_W + m), y: -m * spread };
-      case 1: return { x: WORLD_W + m * spread, y: rand(-m, WORLD_H + m) };
-      case 2: return { x: rand(-m, WORLD_W + m), y: WORLD_H + m * spread };
-      default: return { x: -m * spread, y: rand(-m, WORLD_H + m) };
+      case 0: x = cx + rand(-halfW, halfW); y = cy - halfH; break;
+      case 1: x = cx + halfW; y = cy + rand(-halfH, halfH); break;
+      case 2: x = cx + rand(-halfW, halfW); y = cy + halfH; break;
+      default: x = cx - halfW; y = cy + rand(-halfH, halfH); break;
     }
+    return { x: clamp(x, -60, WORLD_W + 60), y: clamp(y, -60, WORLD_H + 60) };
   }
 
   spawnAtEdge(type) {
@@ -450,6 +509,9 @@ class Game {
 
     p.x = clamp(p.x + p.vx * dt, p.radius, WORLD_W - p.radius);
     p.y = clamp(p.y + p.vy * dt, p.radius, WORLD_H - p.radius);
+    // Buildings stop the player too. A dash carries through nothing solid,
+    // which is what makes a courtyard a place you have to leave by its exits.
+    if (this.blocks.length) this.clearBlocks(p);
     p.anim += Math.hypot(p.vx, p.vy) * dt * 0.07;
 
     if (this.novaLevel > 0) {
@@ -561,6 +623,7 @@ class Game {
       e.x += e.vx * dt;
       e.y += e.vy * dt;
       if (this.barricades.length) this.blockAtWall(e, wasX, wasY);
+      if (this.blocks.length) this.clearBlocks(e);
 
       // Stride speed follows actual movement so the crowd never moonwalks.
       e.anim += Math.hypot(e.vx, e.vy) * dt * 0.09;
